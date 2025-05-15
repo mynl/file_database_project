@@ -104,9 +104,11 @@ def query_ex(df: pd.DataFrame, expr: str) -> pd.DataFrame:
         df = df.sort_values(by=sort_cols, ascending=sort_order)
 
     if duplicates:
-        df = df[df.duplicated("hash", keep=False)]
-    elif duplicates:
-        df = df[df.duplicated("node", keep=False)]
+        df = df.loc[df.duplicated("hash", keep=False)]
+        df['n'] = df['hash'].map(df['hash'].value_counts().get)
+    elif hardlinks:
+        df = df.loc[df.duplicated("node", keep=False)]
+        df['n'] = df['node'].map(df['node'].value_counts().get)
 
     # Top N
     unrestricted_len = len(df)
@@ -120,6 +122,8 @@ def query_ex(df: pd.DataFrame, expr: str) -> pd.DataFrame:
     # drop out the drop cols
     if exclude_cols:
         fields = [i for i in fields if i not in exclude_cols]
+    if duplicates or hardlinks:
+        fields.insert(0, 'n')
     if recent:
         fields.insert(0, 'age')
     df = df[fields]

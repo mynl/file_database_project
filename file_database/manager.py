@@ -42,6 +42,13 @@ class ProjectManager():
                 )
         self._database = pd.DataFrame([])
         self._config_df = None
+        self.last_excluded_list = None
+        self._re_excluded_dirs = None
+        self._re_excluded_files = None
+        self._last_query = None
+        self._last_unrestricted = 0
+        self._last_query_title = ''
+        self._last_query_expr = ''
 
     def __getattr__(self, name):
         """Provide access to config yaml dictionary."""
@@ -76,8 +83,11 @@ class ProjectManager():
             self._config[k] = v
 
     def query(self, expr):
-        """Run expr through the querier."""
-        return query_ex(self.database, expr)
+        """Run ``expr`` through the querier."""
+        self._last_query_expr = expr
+        self._last_query, self._last_unrestricted = query_ex(self.database, expr)
+        self._last_query_title = f'<strong>QUERY</strong>: <code>{expr}</code>, showing {len(self._last_query)} of {self._last_unrestricted} results.'
+        return self._last_query
 
     @staticmethod
     def query_help():
@@ -184,20 +194,21 @@ class ProjectManager():
         last_indexed = self.last_indexed
 
         rows = []
+        self.last_excluded_list = []
         for root_str in self.included_dirs:
             root = Path(root_str)
             if not root.is_dir():
                 print(
                     f'Odd {root=} is not a directory... in self.included_dirs')
                 continue
-            drive_letter = root.anchor[:-1].upper()
+            # C:
+            drive_letter = root.resolve().drive.upper()
             vol_serial, drive_model, drive_serial = drive_info.drive_letter_id(
                 drive_letter)
-            for p in root.rglob("*"):
+            for p in self.filtered_files(root):
                 if not p.is_file():
                     lprint(f'Not file {p}')
-                    continue
-                if self.is_excluded(p):
+                    self.last_excluded_list.append(['non-file', str(p)])
                     continue
                 try:
                     stat = p.stat(follow_symlinks=self.follow_symlinks)
@@ -206,13 +217,14 @@ class ProjectManager():
                     entry = {
                         "name": p.name,
                         # omit the drive letter
-                        "dir": str(p.parent.relative_to(p.anchor)),
+                        "dir": str(p.parent.relative_to(root)),
                         "drive": drive_letter,                           # just letter
                         # whole path
                         "path": str(p),
                         "mod": stat.st_mtime_ns,
                         "create": stat.st_ctime,
                         "node": stat.st_ino,
+                        "links": stat.st_nlink,
                         "size": stat.st_size,
                         "suffix": p.suffix[1:],
                         "vol_serial": vol_serial,
@@ -287,6 +299,7 @@ class ProjectManager():
             last_included_dirs=self.included_dirs.copy(),
             last_excluded_dirs=self.excluded_dirs.copy(),
             last_excluded_files=self.excluded_files.copy(),
+            last_excluded_count=len(self.last_excluded_list),
             start_time=start_str,
             end_time=end_str,
             elapsed_wall_time=elapsed_wall_str,
@@ -298,9 +311,53 @@ class ProjectManager():
         # save updated config and database to feather
         self.save()
 
-    def is_excluded(self, path: Path) -> bool:
-        """Return True if any part of path matches an exclusion pattern."""
-        for part in path.parts:
-            if any(re.search(pat, part) for pat in self.excluded_dirs):
-                return True
-        return any(re.search(pat, path.name) for pat in self.excluded_files)
+    def filtered_files(self, root: Path):
+        """Find all files or symlinks not matching excluded folders or files regexes."""
+        if self._re_excluded_dirs is None:
+            self._re_excluded_dirs = []
+            for d in self.excluded_dirs:
+                self._re_excluded_dirs.append(
+                    re.compile(d, flags=re.IGNORECASE))
+        if self._re_excluded_files is None:
+            self._re_excluded_files = []
+            for d in self.excluded_files:
+                self._re_excluded_files.append(
+                    re.compile(d, flags=re.IGNORECASE))
+
+        def recurse(dir_path: Path):
+            for entry in dir_path.iterdir():
+                if entry.is_dir():
+                    if any(r.search(entry.name) for r in self._re_excluded_dirs):
+                        self.last_excluded_list.append(['dir',  entry.name])
+                        continue  # skip this dir entirely
+                    yield from recurse(entry)
+                elif entry.is_file() or entry.is_symlink(False):
+                    if any(r.search(entry.name) for r in self._re_excluded_files):
+                        self.last_excluded_list.append(['file', entry.name])
+                        continue
+                    yield entry
+
+        return recurse(root)
+
+    def last_excluded_df(self):
+        """Return details of excluded files and directories (for checking)."""
+        d = pd.DataFrame(self.last_excluded_list, columns=['reason', 'file'])
+        d['count'] = 1
+        d = d.groupby(['reason', 'file'])[['count']].sum()
+        return d
+
+    @staticmethod
+    def list():
+        """List projects in the default location."""
+        # TODO
+        return list(BASE_DIR.glob('*.fdb-config'))
+
+    @staticmethod
+    def list_deets():
+        """Dataframe of all projects in default location."""
+        # not sure what the best "way around" is for this...
+        df = pd.concat(
+            [ProjectManager(p).config_df for p in ProjectManager.list()],
+            axis=1).T.fillna('')
+        df = df.set_index('project').T
+        return df

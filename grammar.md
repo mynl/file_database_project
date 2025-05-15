@@ -1,7 +1,8 @@
 GRAMMAR
 =======
 
-clause_list         	::= clause_list clause
+clause_list         	::= 
+                    	 | clause_list clause
                     	 | clause
 
 clause              	::= TOP NUMBER
@@ -17,37 +18,36 @@ flags               	::= FLAG flags
 regexes             	::= regexes AND regex
                     	 | regex
 
-regex               	::= COLUMN TILDE REGEX_SLASHED
-                    	 | COLUMN TILDE REGEX_UNQUOTED
-                    	 | COLUMN TILDE COLUMN
-                    	 | BANG REGEX_UNQUOTED
-                    	 | BANG COLUMN
+regex               	::= IDENTIFIER TILDE REGEX_SLASHED
+                    	 | IDENTIFIER TILDE IDENTIFIER
+                    	 | BANG IDENTIFIER
 
 select_list         	::= select_list "," select_item
                     	 | select_item
 
-select_item         	::= COLUMN
-                    	 | NOT COLUMN
+select_item         	::= IDENTIFIER
+                    	 | NOT IDENTIFIER
                     	 | STAR
 
 where_clause_expression	::= where_clause_expression AND where_clause
                     	 | where_clause
 
-where_clause        	::= COLUMN EQ_TEST QUOTED_STRING
-                    	 | COLUMN EQ_TEST COLUMN
-                    	 | COLUMN EQ_TEST DATETIME
+where_clause        	::= IDENTIFIER EQ_TEST QUOTED_STRING
+                    	 | IDENTIFIER EQ_TEST IDENTIFIER
+                    	 | IDENTIFIER EQ_TEST NUMBER
+                    	 | IDENTIFIER EQ_TEST DATETIME
 
 column_sort_list    	::= column_sort_list "," column_sort
                     	 | column_sort
 
-column_sort         	::= COLUMN
-                    	 | NOT COLUMN
+column_sort         	::= IDENTIFIER
+                    	 | NOT IDENTIFIER
 
 
 
 TOKENS
 ======
-        COLUMN, NUMBER, QUOTED_STRING, REGEX_SLASHED, REGEX_UNQUOTED,
+        IDENTIFIER, NUMBER, QUOTED_STRING, REGEX_SLASHED,
         DATETIME, SELECT, ORDER_BY, WHERE, TOP, EQ_TEST, AND,
         FLAG, STAR, NOT, DATETIME, TILDE, BANG
 
@@ -69,6 +69,5 @@ DEFINITIONS
     DATETIME complex regex
     NUMBER = r'-?(\d+(\.\d*)?|\.\d+)(%|[eE][+-]?\d+)?|inf|-inf'
     QUOTED_STRING = r'''"([^"\]|\.)*"|'([^'\]|\.)*''''
-    COLUMN = r'[a-z_][a-z0-9_]*'
+    IDENTIFIER = r'[a-z_][a-z0-9_]*'
     REGEX_SLASHED = r'/([^/\]|\.)*/'
-    REGEX_UNQUOTED = r'[^\s,~/!][^\s,]*'
