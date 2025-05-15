@@ -1,0 +1,662 @@
+<h1>Grammar:</h1>
+
+<pre>
+
+<div id="rule_0" />Rule 0     S' <- query
+<div id="rule_1" />Rule 1     query <- clause_list
+<div id="rule_2" />Rule 2     clause_list <- clause
+<div id="rule_3" />Rule 3     clause_list <- clause_list clause
+<div id="rule_4" />Rule 4     clause <- ORDER_BY column_sort_list
+<div id="rule_5" />Rule 5     clause <- WHERE where_clause_expression
+<div id="rule_6" />Rule 6     clause <- SELECT select_list
+<div id="rule_7" />Rule 7     clause <- regexes
+<div id="rule_8" />Rule 8     clause <- flags
+<div id="rule_9" />Rule 9     clause <- TOP NUMBER
+<div id="rule_10" />Rule 10    flags <- FLAG
+<div id="rule_11" />Rule 11    flags <- FLAG flags
+<div id="rule_12" />Rule 12    regexes <- regex
+<div id="rule_13" />Rule 13    regexes <- regexes AND regex
+<div id="rule_14" />Rule 14    regex <- COLUMN TILDE COLUMN
+<div id="rule_15" />Rule 15    regex <- COLUMN TILDE REGEX_UNQUOTED
+<div id="rule_16" />Rule 16    regex <- COLUMN TILDE REGEX_SLASHED
+<div id="rule_17" />Rule 17    select_list <- select_item
+<div id="rule_18" />Rule 18    select_list <- select_list , select_item
+<div id="rule_19" />Rule 19    select_item <- STAR
+<div id="rule_20" />Rule 20    select_item <- NOT COLUMN
+<div id="rule_21" />Rule 21    select_item <- COLUMN
+<div id="rule_22" />Rule 22    where_clause_expression <- where_clause
+<div id="rule_23" />Rule 23    where_clause_expression <- where_clause_expression AND where_clause
+<div id="rule_24" />Rule 24    where_clause <- COLUMN EQ_TEST DATETIME
+<div id="rule_25" />Rule 25    where_clause <- COLUMN EQ_TEST COLUMN
+<div id="rule_26" />Rule 26    where_clause <- COLUMN EQ_TEST QUOTED_STRING
+<div id="rule_27" />Rule 27    column_sort_list <- column_sort
+<div id="rule_28" />Rule 28    column_sort_list <- column_sort_list , column_sort
+<div id="rule_29" />Rule 29    column_sort <- NOT COLUMN
+<div id="rule_30" />Rule 30    column_sort <- COLUMN
+
+Terminals, with rules where they appear:
+
+,                    : 18 28
+AND                  : 13 23
+COLUMN               : 14 14 15 16 20 21 24 25 25 26 29 30
+DATETIME             : 24
+EQ_TEST              : 24 25 26
+FLAG                 : 10 11
+NOT                  : 20 29
+NUMBER               : 9
+ORDER_BY             : 4
+QUOTED_STRING        : 26
+REGEX_SLASHED        : 16
+REGEX_UNQUOTED       : 15
+SELECT               : 6
+STAR                 : 19
+TILDE                : 14 15 16
+TOP                  : 9
+WHERE                : 5
+error                : 
+
+Nonterminals, with rules where they appear:
+
+clause               : 2 3
+clause_list          : 1 3
+column_sort          : 27 28
+column_sort_list     : 4 28
+flags                : 8 11
+query                : 0
+regex                : 12 13
+regexes              : 7 13
+select_item          : 17 18
+select_list          : 6 18
+where_clause         : 22 23
+where_clause_expression : 5 23
+
+
+<div id="state_0" /><b>state 0</b>
+
+    <a href="#rule_0">Rule (0)</a> S' <- . query
+    <a href="#rule_1">Rule (1)</a> query <- . clause_list
+    <a href="#rule_2">Rule (2)</a> clause_list <- . clause
+    <a href="#rule_3">Rule (3)</a> clause_list <- . clause_list clause
+    <a href="#rule_4">Rule (4)</a> clause <- . ORDER_BY column_sort_list
+    <a href="#rule_5">Rule (5)</a> clause <- . WHERE where_clause_expression
+    <a href="#rule_6">Rule (6)</a> clause <- . SELECT select_list
+    <a href="#rule_7">Rule (7)</a> clause <- . regexes
+    <a href="#rule_8">Rule (8)</a> clause <- . flags
+    <a href="#rule_9">Rule (9)</a> clause <- . TOP NUMBER
+    <a href="#rule_12">Rule (12)</a> regexes <- . regex
+    <a href="#rule_13">Rule (13)</a> regexes <- . regexes AND regex
+    <a href="#rule_10">Rule (10)</a> flags <- . FLAG
+    <a href="#rule_11">Rule (11)</a> flags <- . FLAG flags
+    <a href="#rule_14">Rule (14)</a> regex <- . COLUMN TILDE COLUMN
+    <a href="#rule_15">Rule (15)</a> regex <- . COLUMN TILDE REGEX_UNQUOTED
+    <a href="#rule_16">Rule (16)</a> regex <- . COLUMN TILDE REGEX_SLASHED
+    ORDER_BY        shift and go to <a href="#state_4">state (4)</a>
+    WHERE           shift and go to <a href="#state_5">state (5)</a>
+    SELECT          shift and go to <a href="#state_6">state (6)</a>
+    TOP             shift and go to <a href="#state_9">state (9)</a>
+    FLAG            shift and go to <a href="#state_11">state (11)</a>
+    COLUMN          shift and go to <a href="#state_12">state (12)</a>
+
+    query                          shift and go to <a href="#state_1">state (1)</a>
+    clause_list                    shift and go to <a href="#state_2">state (2)</a>
+    clause                         shift and go to <a href="#state_3">state (3)</a>
+    regexes                        shift and go to <a href="#state_7">state (7)</a>
+    flags                          shift and go to <a href="#state_8">state (8)</a>
+    regex                          shift and go to <a href="#state_10">state (10)</a>
+
+<div id="state_1" /><b>state 1</b>
+
+    <a href="#rule_0">Rule (0)</a> S' <- query .
+
+
+<div id="state_2" /><b>state 2</b>
+
+    <a href="#rule_1">Rule (1)</a> query <- clause_list .
+    <a href="#rule_3">Rule (3)</a> clause_list <- clause_list . clause
+    <a href="#rule_4">Rule (4)</a> clause <- . ORDER_BY column_sort_list
+    <a href="#rule_5">Rule (5)</a> clause <- . WHERE where_clause_expression
+    <a href="#rule_6">Rule (6)</a> clause <- . SELECT select_list
+    <a href="#rule_7">Rule (7)</a> clause <- . regexes
+    <a href="#rule_8">Rule (8)</a> clause <- . flags
+    <a href="#rule_9">Rule (9)</a> clause <- . TOP NUMBER
+    <a href="#rule_12">Rule (12)</a> regexes <- . regex
+    <a href="#rule_13">Rule (13)</a> regexes <- . regexes AND regex
+    <a href="#rule_10">Rule (10)</a> flags <- . FLAG
+    <a href="#rule_11">Rule (11)</a> flags <- . FLAG flags
+    <a href="#rule_14">Rule (14)</a> regex <- . COLUMN TILDE COLUMN
+    <a href="#rule_15">Rule (15)</a> regex <- . COLUMN TILDE REGEX_UNQUOTED
+    <a href="#rule_16">Rule (16)</a> regex <- . COLUMN TILDE REGEX_SLASHED
+    $end            reduce using <a href="#rule_1">rule (1)</a> (query <- clause_list .)
+    ORDER_BY        shift and go to <a href="#state_4">state (4)</a>
+    WHERE           shift and go to <a href="#state_5">state (5)</a>
+    SELECT          shift and go to <a href="#state_6">state (6)</a>
+    TOP             shift and go to <a href="#state_9">state (9)</a>
+    FLAG            shift and go to <a href="#state_11">state (11)</a>
+    COLUMN          shift and go to <a href="#state_12">state (12)</a>
+
+    clause                         shift and go to <a href="#state_13">state (13)</a>
+    regexes                        shift and go to <a href="#state_7">state (7)</a>
+    flags                          shift and go to <a href="#state_8">state (8)</a>
+    regex                          shift and go to <a href="#state_10">state (10)</a>
+
+<div id="state_3" /><b>state 3</b>
+
+    <a href="#rule_2">Rule (2)</a> clause_list <- clause .
+    ORDER_BY        reduce using <a href="#rule_2">rule (2)</a> (clause_list <- clause .)
+    WHERE           reduce using <a href="#rule_2">rule (2)</a> (clause_list <- clause .)
+    SELECT          reduce using <a href="#rule_2">rule (2)</a> (clause_list <- clause .)
+    TOP             reduce using <a href="#rule_2">rule (2)</a> (clause_list <- clause .)
+    FLAG            reduce using <a href="#rule_2">rule (2)</a> (clause_list <- clause .)
+    COLUMN          reduce using <a href="#rule_2">rule (2)</a> (clause_list <- clause .)
+    $end            reduce using <a href="#rule_2">rule (2)</a> (clause_list <- clause .)
+
+
+<div id="state_4" /><b>state 4</b>
+
+    <a href="#rule_4">Rule (4)</a> clause <- ORDER_BY . column_sort_list
+    <a href="#rule_27">Rule (27)</a> column_sort_list <- . column_sort
+    <a href="#rule_28">Rule (28)</a> column_sort_list <- . column_sort_list , column_sort
+    <a href="#rule_29">Rule (29)</a> column_sort <- . NOT COLUMN
+    <a href="#rule_30">Rule (30)</a> column_sort <- . COLUMN
+    NOT             shift and go to <a href="#state_16">state (16)</a>
+    COLUMN          shift and go to <a href="#state_17">state (17)</a>
+
+    column_sort_list               shift and go to <a href="#state_14">state (14)</a>
+    column_sort                    shift and go to <a href="#state_15">state (15)</a>
+
+<div id="state_5" /><b>state 5</b>
+
+    <a href="#rule_5">Rule (5)</a> clause <- WHERE . where_clause_expression
+    <a href="#rule_22">Rule (22)</a> where_clause_expression <- . where_clause
+    <a href="#rule_23">Rule (23)</a> where_clause_expression <- . where_clause_expression AND where_clause
+    <a href="#rule_24">Rule (24)</a> where_clause <- . COLUMN EQ_TEST DATETIME
+    <a href="#rule_25">Rule (25)</a> where_clause <- . COLUMN EQ_TEST COLUMN
+    <a href="#rule_26">Rule (26)</a> where_clause <- . COLUMN EQ_TEST QUOTED_STRING
+    COLUMN          shift and go to <a href="#state_20">state (20)</a>
+
+    where_clause_expression        shift and go to <a href="#state_18">state (18)</a>
+    where_clause                   shift and go to <a href="#state_19">state (19)</a>
+
+<div id="state_6" /><b>state 6</b>
+
+    <a href="#rule_6">Rule (6)</a> clause <- SELECT . select_list
+    <a href="#rule_17">Rule (17)</a> select_list <- . select_item
+    <a href="#rule_18">Rule (18)</a> select_list <- . select_list , select_item
+    <a href="#rule_19">Rule (19)</a> select_item <- . STAR
+    <a href="#rule_20">Rule (20)</a> select_item <- . NOT COLUMN
+    <a href="#rule_21">Rule (21)</a> select_item <- . COLUMN
+    STAR            shift and go to <a href="#state_23">state (23)</a>
+    NOT             shift and go to <a href="#state_24">state (24)</a>
+    COLUMN          shift and go to <a href="#state_25">state (25)</a>
+
+    select_list                    shift and go to <a href="#state_21">state (21)</a>
+    select_item                    shift and go to <a href="#state_22">state (22)</a>
+
+<div id="state_7" /><b>state 7</b>
+
+    <a href="#rule_7">Rule (7)</a> clause <- regexes .
+    <a href="#rule_13">Rule (13)</a> regexes <- regexes . AND regex
+    ORDER_BY        reduce using <a href="#rule_7">rule (7)</a> (clause <- regexes .)
+    WHERE           reduce using <a href="#rule_7">rule (7)</a> (clause <- regexes .)
+    SELECT          reduce using <a href="#rule_7">rule (7)</a> (clause <- regexes .)
+    TOP             reduce using <a href="#rule_7">rule (7)</a> (clause <- regexes .)
+    FLAG            reduce using <a href="#rule_7">rule (7)</a> (clause <- regexes .)
+    COLUMN          reduce using <a href="#rule_7">rule (7)</a> (clause <- regexes .)
+    $end            reduce using <a href="#rule_7">rule (7)</a> (clause <- regexes .)
+    AND             shift and go to <a href="#state_26">state (26)</a>
+
+
+<div id="state_8" /><b>state 8</b>
+
+    <a href="#rule_8">Rule (8)</a> clause <- flags .
+    ORDER_BY        reduce using <a href="#rule_8">rule (8)</a> (clause <- flags .)
+    WHERE           reduce using <a href="#rule_8">rule (8)</a> (clause <- flags .)
+    SELECT          reduce using <a href="#rule_8">rule (8)</a> (clause <- flags .)
+    TOP             reduce using <a href="#rule_8">rule (8)</a> (clause <- flags .)
+    FLAG            reduce using <a href="#rule_8">rule (8)</a> (clause <- flags .)
+    COLUMN          reduce using <a href="#rule_8">rule (8)</a> (clause <- flags .)
+    $end            reduce using <a href="#rule_8">rule (8)</a> (clause <- flags .)
+
+
+<div id="state_9" /><b>state 9</b>
+
+    <a href="#rule_9">Rule (9)</a> clause <- TOP . NUMBER
+    NUMBER          shift and go to <a href="#state_27">state (27)</a>
+
+
+<div id="state_10" /><b>state 10</b>
+
+    <a href="#rule_12">Rule (12)</a> regexes <- regex .
+    AND             reduce using <a href="#rule_12">rule (12)</a> (regexes <- regex .)
+    ORDER_BY        reduce using <a href="#rule_12">rule (12)</a> (regexes <- regex .)
+    WHERE           reduce using <a href="#rule_12">rule (12)</a> (regexes <- regex .)
+    SELECT          reduce using <a href="#rule_12">rule (12)</a> (regexes <- regex .)
+    TOP             reduce using <a href="#rule_12">rule (12)</a> (regexes <- regex .)
+    FLAG            reduce using <a href="#rule_12">rule (12)</a> (regexes <- regex .)
+    COLUMN          reduce using <a href="#rule_12">rule (12)</a> (regexes <- regex .)
+    $end            reduce using <a href="#rule_12">rule (12)</a> (regexes <- regex .)
+
+
+<div id="state_11" /><b>state 11</b>
+
+    <a href="#rule_10">Rule (10)</a> flags <- FLAG .
+    <a href="#rule_11">Rule (11)</a> flags <- FLAG . flags
+    <a href="#rule_10">Rule (10)</a> flags <- . FLAG
+    <a href="#rule_11">Rule (11)</a> flags <- . FLAG flags
+  ! shift/reduce conflict for FLAG resolved as shift
+    ORDER_BY        reduce using <a href="#rule_10">rule (10)</a> (flags <- FLAG .)
+    WHERE           reduce using <a href="#rule_10">rule (10)</a> (flags <- FLAG .)
+    SELECT          reduce using <a href="#rule_10">rule (10)</a> (flags <- FLAG .)
+    TOP             reduce using <a href="#rule_10">rule (10)</a> (flags <- FLAG .)
+    COLUMN          reduce using <a href="#rule_10">rule (10)</a> (flags <- FLAG .)
+    $end            reduce using <a href="#rule_10">rule (10)</a> (flags <- FLAG .)
+    FLAG            shift and go to <a href="#state_11">state (11)</a>
+
+    flags                          shift and go to <a href="#state_28">state (28)</a>
+
+<div id="state_12" /><b>state 12</b>
+
+    <a href="#rule_14">Rule (14)</a> regex <- COLUMN . TILDE COLUMN
+    <a href="#rule_15">Rule (15)</a> regex <- COLUMN . TILDE REGEX_UNQUOTED
+    <a href="#rule_16">Rule (16)</a> regex <- COLUMN . TILDE REGEX_SLASHED
+    TILDE           shift and go to <a href="#state_29">state (29)</a>
+
+
+<div id="state_13" /><b>state 13</b>
+
+    <a href="#rule_3">Rule (3)</a> clause_list <- clause_list clause .
+    ORDER_BY        reduce using <a href="#rule_3">rule (3)</a> (clause_list <- clause_list clause .)
+    WHERE           reduce using <a href="#rule_3">rule (3)</a> (clause_list <- clause_list clause .)
+    SELECT          reduce using <a href="#rule_3">rule (3)</a> (clause_list <- clause_list clause .)
+    TOP             reduce using <a href="#rule_3">rule (3)</a> (clause_list <- clause_list clause .)
+    FLAG            reduce using <a href="#rule_3">rule (3)</a> (clause_list <- clause_list clause .)
+    COLUMN          reduce using <a href="#rule_3">rule (3)</a> (clause_list <- clause_list clause .)
+    $end            reduce using <a href="#rule_3">rule (3)</a> (clause_list <- clause_list clause .)
+
+
+<div id="state_14" /><b>state 14</b>
+
+    <a href="#rule_4">Rule (4)</a> clause <- ORDER_BY column_sort_list .
+    <a href="#rule_28">Rule (28)</a> column_sort_list <- column_sort_list . , column_sort
+    ORDER_BY        reduce using <a href="#rule_4">rule (4)</a> (clause <- ORDER_BY column_sort_list .)
+    WHERE           reduce using <a href="#rule_4">rule (4)</a> (clause <- ORDER_BY column_sort_list .)
+    SELECT          reduce using <a href="#rule_4">rule (4)</a> (clause <- ORDER_BY column_sort_list .)
+    TOP             reduce using <a href="#rule_4">rule (4)</a> (clause <- ORDER_BY column_sort_list .)
+    FLAG            reduce using <a href="#rule_4">rule (4)</a> (clause <- ORDER_BY column_sort_list .)
+    COLUMN          reduce using <a href="#rule_4">rule (4)</a> (clause <- ORDER_BY column_sort_list .)
+    $end            reduce using <a href="#rule_4">rule (4)</a> (clause <- ORDER_BY column_sort_list .)
+    ,               shift and go to <a href="#state_30">state (30)</a>
+
+
+<div id="state_15" /><b>state 15</b>
+
+    <a href="#rule_27">Rule (27)</a> column_sort_list <- column_sort .
+    ,               reduce using <a href="#rule_27">rule (27)</a> (column_sort_list <- column_sort .)
+    ORDER_BY        reduce using <a href="#rule_27">rule (27)</a> (column_sort_list <- column_sort .)
+    WHERE           reduce using <a href="#rule_27">rule (27)</a> (column_sort_list <- column_sort .)
+    SELECT          reduce using <a href="#rule_27">rule (27)</a> (column_sort_list <- column_sort .)
+    TOP             reduce using <a href="#rule_27">rule (27)</a> (column_sort_list <- column_sort .)
+    FLAG            reduce using <a href="#rule_27">rule (27)</a> (column_sort_list <- column_sort .)
+    COLUMN          reduce using <a href="#rule_27">rule (27)</a> (column_sort_list <- column_sort .)
+    $end            reduce using <a href="#rule_27">rule (27)</a> (column_sort_list <- column_sort .)
+
+
+<div id="state_16" /><b>state 16</b>
+
+    <a href="#rule_29">Rule (29)</a> column_sort <- NOT . COLUMN
+    COLUMN          shift and go to <a href="#state_31">state (31)</a>
+
+
+<div id="state_17" /><b>state 17</b>
+
+    <a href="#rule_30">Rule (30)</a> column_sort <- COLUMN .
+    ,               reduce using <a href="#rule_30">rule (30)</a> (column_sort <- COLUMN .)
+    ORDER_BY        reduce using <a href="#rule_30">rule (30)</a> (column_sort <- COLUMN .)
+    WHERE           reduce using <a href="#rule_30">rule (30)</a> (column_sort <- COLUMN .)
+    SELECT          reduce using <a href="#rule_30">rule (30)</a> (column_sort <- COLUMN .)
+    TOP             reduce using <a href="#rule_30">rule (30)</a> (column_sort <- COLUMN .)
+    FLAG            reduce using <a href="#rule_30">rule (30)</a> (column_sort <- COLUMN .)
+    COLUMN          reduce using <a href="#rule_30">rule (30)</a> (column_sort <- COLUMN .)
+    $end            reduce using <a href="#rule_30">rule (30)</a> (column_sort <- COLUMN .)
+
+
+<div id="state_18" /><b>state 18</b>
+
+    <a href="#rule_5">Rule (5)</a> clause <- WHERE where_clause_expression .
+    <a href="#rule_23">Rule (23)</a> where_clause_expression <- where_clause_expression . AND where_clause
+    ORDER_BY        reduce using <a href="#rule_5">rule (5)</a> (clause <- WHERE where_clause_expression .)
+    WHERE           reduce using <a href="#rule_5">rule (5)</a> (clause <- WHERE where_clause_expression .)
+    SELECT          reduce using <a href="#rule_5">rule (5)</a> (clause <- WHERE where_clause_expression .)
+    TOP             reduce using <a href="#rule_5">rule (5)</a> (clause <- WHERE where_clause_expression .)
+    FLAG            reduce using <a href="#rule_5">rule (5)</a> (clause <- WHERE where_clause_expression .)
+    COLUMN          reduce using <a href="#rule_5">rule (5)</a> (clause <- WHERE where_clause_expression .)
+    $end            reduce using <a href="#rule_5">rule (5)</a> (clause <- WHERE where_clause_expression .)
+    AND             shift and go to <a href="#state_32">state (32)</a>
+
+
+<div id="state_19" /><b>state 19</b>
+
+    <a href="#rule_22">Rule (22)</a> where_clause_expression <- where_clause .
+    AND             reduce using <a href="#rule_22">rule (22)</a> (where_clause_expression <- where_clause .)
+    ORDER_BY        reduce using <a href="#rule_22">rule (22)</a> (where_clause_expression <- where_clause .)
+    WHERE           reduce using <a href="#rule_22">rule (22)</a> (where_clause_expression <- where_clause .)
+    SELECT          reduce using <a href="#rule_22">rule (22)</a> (where_clause_expression <- where_clause .)
+    TOP             reduce using <a href="#rule_22">rule (22)</a> (where_clause_expression <- where_clause .)
+    FLAG            reduce using <a href="#rule_22">rule (22)</a> (where_clause_expression <- where_clause .)
+    COLUMN          reduce using <a href="#rule_22">rule (22)</a> (where_clause_expression <- where_clause .)
+    $end            reduce using <a href="#rule_22">rule (22)</a> (where_clause_expression <- where_clause .)
+
+
+<div id="state_20" /><b>state 20</b>
+
+    <a href="#rule_24">Rule (24)</a> where_clause <- COLUMN . EQ_TEST DATETIME
+    <a href="#rule_25">Rule (25)</a> where_clause <- COLUMN . EQ_TEST COLUMN
+    <a href="#rule_26">Rule (26)</a> where_clause <- COLUMN . EQ_TEST QUOTED_STRING
+    EQ_TEST         shift and go to <a href="#state_33">state (33)</a>
+
+
+<div id="state_21" /><b>state 21</b>
+
+    <a href="#rule_6">Rule (6)</a> clause <- SELECT select_list .
+    <a href="#rule_18">Rule (18)</a> select_list <- select_list . , select_item
+    ORDER_BY        reduce using <a href="#rule_6">rule (6)</a> (clause <- SELECT select_list .)
+    WHERE           reduce using <a href="#rule_6">rule (6)</a> (clause <- SELECT select_list .)
+    SELECT          reduce using <a href="#rule_6">rule (6)</a> (clause <- SELECT select_list .)
+    TOP             reduce using <a href="#rule_6">rule (6)</a> (clause <- SELECT select_list .)
+    FLAG            reduce using <a href="#rule_6">rule (6)</a> (clause <- SELECT select_list .)
+    COLUMN          reduce using <a href="#rule_6">rule (6)</a> (clause <- SELECT select_list .)
+    $end            reduce using <a href="#rule_6">rule (6)</a> (clause <- SELECT select_list .)
+    ,               shift and go to <a href="#state_34">state (34)</a>
+
+
+<div id="state_22" /><b>state 22</b>
+
+    <a href="#rule_17">Rule (17)</a> select_list <- select_item .
+    ,               reduce using <a href="#rule_17">rule (17)</a> (select_list <- select_item .)
+    ORDER_BY        reduce using <a href="#rule_17">rule (17)</a> (select_list <- select_item .)
+    WHERE           reduce using <a href="#rule_17">rule (17)</a> (select_list <- select_item .)
+    SELECT          reduce using <a href="#rule_17">rule (17)</a> (select_list <- select_item .)
+    TOP             reduce using <a href="#rule_17">rule (17)</a> (select_list <- select_item .)
+    FLAG            reduce using <a href="#rule_17">rule (17)</a> (select_list <- select_item .)
+    COLUMN          reduce using <a href="#rule_17">rule (17)</a> (select_list <- select_item .)
+    $end            reduce using <a href="#rule_17">rule (17)</a> (select_list <- select_item .)
+
+
+<div id="state_23" /><b>state 23</b>
+
+    <a href="#rule_19">Rule (19)</a> select_item <- STAR .
+    ,               reduce using <a href="#rule_19">rule (19)</a> (select_item <- STAR .)
+    ORDER_BY        reduce using <a href="#rule_19">rule (19)</a> (select_item <- STAR .)
+    WHERE           reduce using <a href="#rule_19">rule (19)</a> (select_item <- STAR .)
+    SELECT          reduce using <a href="#rule_19">rule (19)</a> (select_item <- STAR .)
+    TOP             reduce using <a href="#rule_19">rule (19)</a> (select_item <- STAR .)
+    FLAG            reduce using <a href="#rule_19">rule (19)</a> (select_item <- STAR .)
+    COLUMN          reduce using <a href="#rule_19">rule (19)</a> (select_item <- STAR .)
+    $end            reduce using <a href="#rule_19">rule (19)</a> (select_item <- STAR .)
+
+
+<div id="state_24" /><b>state 24</b>
+
+    <a href="#rule_20">Rule (20)</a> select_item <- NOT . COLUMN
+    COLUMN          shift and go to <a href="#state_35">state (35)</a>
+
+
+<div id="state_25" /><b>state 25</b>
+
+    <a href="#rule_21">Rule (21)</a> select_item <- COLUMN .
+    ,               reduce using <a href="#rule_21">rule (21)</a> (select_item <- COLUMN .)
+    ORDER_BY        reduce using <a href="#rule_21">rule (21)</a> (select_item <- COLUMN .)
+    WHERE           reduce using <a href="#rule_21">rule (21)</a> (select_item <- COLUMN .)
+    SELECT          reduce using <a href="#rule_21">rule (21)</a> (select_item <- COLUMN .)
+    TOP             reduce using <a href="#rule_21">rule (21)</a> (select_item <- COLUMN .)
+    FLAG            reduce using <a href="#rule_21">rule (21)</a> (select_item <- COLUMN .)
+    COLUMN          reduce using <a href="#rule_21">rule (21)</a> (select_item <- COLUMN .)
+    $end            reduce using <a href="#rule_21">rule (21)</a> (select_item <- COLUMN .)
+
+
+<div id="state_26" /><b>state 26</b>
+
+    <a href="#rule_13">Rule (13)</a> regexes <- regexes AND . regex
+    <a href="#rule_14">Rule (14)</a> regex <- . COLUMN TILDE COLUMN
+    <a href="#rule_15">Rule (15)</a> regex <- . COLUMN TILDE REGEX_UNQUOTED
+    <a href="#rule_16">Rule (16)</a> regex <- . COLUMN TILDE REGEX_SLASHED
+    COLUMN          shift and go to <a href="#state_12">state (12)</a>
+
+    regex                          shift and go to <a href="#state_36">state (36)</a>
+
+<div id="state_27" /><b>state 27</b>
+
+    <a href="#rule_9">Rule (9)</a> clause <- TOP NUMBER .
+    ORDER_BY        reduce using <a href="#rule_9">rule (9)</a> (clause <- TOP NUMBER .)
+    WHERE           reduce using <a href="#rule_9">rule (9)</a> (clause <- TOP NUMBER .)
+    SELECT          reduce using <a href="#rule_9">rule (9)</a> (clause <- TOP NUMBER .)
+    TOP             reduce using <a href="#rule_9">rule (9)</a> (clause <- TOP NUMBER .)
+    FLAG            reduce using <a href="#rule_9">rule (9)</a> (clause <- TOP NUMBER .)
+    COLUMN          reduce using <a href="#rule_9">rule (9)</a> (clause <- TOP NUMBER .)
+    $end            reduce using <a href="#rule_9">rule (9)</a> (clause <- TOP NUMBER .)
+
+
+<div id="state_28" /><b>state 28</b>
+
+    <a href="#rule_11">Rule (11)</a> flags <- FLAG flags .
+    ORDER_BY        reduce using <a href="#rule_11">rule (11)</a> (flags <- FLAG flags .)
+    WHERE           reduce using <a href="#rule_11">rule (11)</a> (flags <- FLAG flags .)
+    SELECT          reduce using <a href="#rule_11">rule (11)</a> (flags <- FLAG flags .)
+    TOP             reduce using <a href="#rule_11">rule (11)</a> (flags <- FLAG flags .)
+    FLAG            reduce using <a href="#rule_11">rule (11)</a> (flags <- FLAG flags .)
+    COLUMN          reduce using <a href="#rule_11">rule (11)</a> (flags <- FLAG flags .)
+    $end            reduce using <a href="#rule_11">rule (11)</a> (flags <- FLAG flags .)
+
+
+<div id="state_29" /><b>state 29</b>
+
+    <a href="#rule_14">Rule (14)</a> regex <- COLUMN TILDE . COLUMN
+    <a href="#rule_15">Rule (15)</a> regex <- COLUMN TILDE . REGEX_UNQUOTED
+    <a href="#rule_16">Rule (16)</a> regex <- COLUMN TILDE . REGEX_SLASHED
+    COLUMN          shift and go to <a href="#state_37">state (37)</a>
+    REGEX_UNQUOTED  shift and go to <a href="#state_38">state (38)</a>
+    REGEX_SLASHED   shift and go to <a href="#state_39">state (39)</a>
+
+
+<div id="state_30" /><b>state 30</b>
+
+    <a href="#rule_28">Rule (28)</a> column_sort_list <- column_sort_list , . column_sort
+    <a href="#rule_29">Rule (29)</a> column_sort <- . NOT COLUMN
+    <a href="#rule_30">Rule (30)</a> column_sort <- . COLUMN
+    NOT             shift and go to <a href="#state_16">state (16)</a>
+    COLUMN          shift and go to <a href="#state_17">state (17)</a>
+
+    column_sort                    shift and go to <a href="#state_40">state (40)</a>
+
+<div id="state_31" /><b>state 31</b>
+
+    <a href="#rule_29">Rule (29)</a> column_sort <- NOT COLUMN .
+    ,               reduce using <a href="#rule_29">rule (29)</a> (column_sort <- NOT COLUMN .)
+    ORDER_BY        reduce using <a href="#rule_29">rule (29)</a> (column_sort <- NOT COLUMN .)
+    WHERE           reduce using <a href="#rule_29">rule (29)</a> (column_sort <- NOT COLUMN .)
+    SELECT          reduce using <a href="#rule_29">rule (29)</a> (column_sort <- NOT COLUMN .)
+    TOP             reduce using <a href="#rule_29">rule (29)</a> (column_sort <- NOT COLUMN .)
+    FLAG            reduce using <a href="#rule_29">rule (29)</a> (column_sort <- NOT COLUMN .)
+    COLUMN          reduce using <a href="#rule_29">rule (29)</a> (column_sort <- NOT COLUMN .)
+    $end            reduce using <a href="#rule_29">rule (29)</a> (column_sort <- NOT COLUMN .)
+
+
+<div id="state_32" /><b>state 32</b>
+
+    <a href="#rule_23">Rule (23)</a> where_clause_expression <- where_clause_expression AND . where_clause
+    <a href="#rule_24">Rule (24)</a> where_clause <- . COLUMN EQ_TEST DATETIME
+    <a href="#rule_25">Rule (25)</a> where_clause <- . COLUMN EQ_TEST COLUMN
+    <a href="#rule_26">Rule (26)</a> where_clause <- . COLUMN EQ_TEST QUOTED_STRING
+    COLUMN          shift and go to <a href="#state_20">state (20)</a>
+
+    where_clause                   shift and go to <a href="#state_41">state (41)</a>
+
+<div id="state_33" /><b>state 33</b>
+
+    <a href="#rule_24">Rule (24)</a> where_clause <- COLUMN EQ_TEST . DATETIME
+    <a href="#rule_25">Rule (25)</a> where_clause <- COLUMN EQ_TEST . COLUMN
+    <a href="#rule_26">Rule (26)</a> where_clause <- COLUMN EQ_TEST . QUOTED_STRING
+    DATETIME        shift and go to <a href="#state_43">state (43)</a>
+    COLUMN          shift and go to <a href="#state_42">state (42)</a>
+    QUOTED_STRING   shift and go to <a href="#state_44">state (44)</a>
+
+
+<div id="state_34" /><b>state 34</b>
+
+    <a href="#rule_18">Rule (18)</a> select_list <- select_list , . select_item
+    <a href="#rule_19">Rule (19)</a> select_item <- . STAR
+    <a href="#rule_20">Rule (20)</a> select_item <- . NOT COLUMN
+    <a href="#rule_21">Rule (21)</a> select_item <- . COLUMN
+    STAR            shift and go to <a href="#state_23">state (23)</a>
+    NOT             shift and go to <a href="#state_24">state (24)</a>
+    COLUMN          shift and go to <a href="#state_25">state (25)</a>
+
+    select_item                    shift and go to <a href="#state_45">state (45)</a>
+
+<div id="state_35" /><b>state 35</b>
+
+    <a href="#rule_20">Rule (20)</a> select_item <- NOT COLUMN .
+    ,               reduce using <a href="#rule_20">rule (20)</a> (select_item <- NOT COLUMN .)
+    ORDER_BY        reduce using <a href="#rule_20">rule (20)</a> (select_item <- NOT COLUMN .)
+    WHERE           reduce using <a href="#rule_20">rule (20)</a> (select_item <- NOT COLUMN .)
+    SELECT          reduce using <a href="#rule_20">rule (20)</a> (select_item <- NOT COLUMN .)
+    TOP             reduce using <a href="#rule_20">rule (20)</a> (select_item <- NOT COLUMN .)
+    FLAG            reduce using <a href="#rule_20">rule (20)</a> (select_item <- NOT COLUMN .)
+    COLUMN          reduce using <a href="#rule_20">rule (20)</a> (select_item <- NOT COLUMN .)
+    $end            reduce using <a href="#rule_20">rule (20)</a> (select_item <- NOT COLUMN .)
+
+
+<div id="state_36" /><b>state 36</b>
+
+    <a href="#rule_13">Rule (13)</a> regexes <- regexes AND regex .
+    AND             reduce using <a href="#rule_13">rule (13)</a> (regexes <- regexes AND regex .)
+    ORDER_BY        reduce using <a href="#rule_13">rule (13)</a> (regexes <- regexes AND regex .)
+    WHERE           reduce using <a href="#rule_13">rule (13)</a> (regexes <- regexes AND regex .)
+    SELECT          reduce using <a href="#rule_13">rule (13)</a> (regexes <- regexes AND regex .)
+    TOP             reduce using <a href="#rule_13">rule (13)</a> (regexes <- regexes AND regex .)
+    FLAG            reduce using <a href="#rule_13">rule (13)</a> (regexes <- regexes AND regex .)
+    COLUMN          reduce using <a href="#rule_13">rule (13)</a> (regexes <- regexes AND regex .)
+    $end            reduce using <a href="#rule_13">rule (13)</a> (regexes <- regexes AND regex .)
+
+
+<div id="state_37" /><b>state 37</b>
+
+    <a href="#rule_14">Rule (14)</a> regex <- COLUMN TILDE COLUMN .
+    AND             reduce using <a href="#rule_14">rule (14)</a> (regex <- COLUMN TILDE COLUMN .)
+    ORDER_BY        reduce using <a href="#rule_14">rule (14)</a> (regex <- COLUMN TILDE COLUMN .)
+    WHERE           reduce using <a href="#rule_14">rule (14)</a> (regex <- COLUMN TILDE COLUMN .)
+    SELECT          reduce using <a href="#rule_14">rule (14)</a> (regex <- COLUMN TILDE COLUMN .)
+    TOP             reduce using <a href="#rule_14">rule (14)</a> (regex <- COLUMN TILDE COLUMN .)
+    FLAG            reduce using <a href="#rule_14">rule (14)</a> (regex <- COLUMN TILDE COLUMN .)
+    COLUMN          reduce using <a href="#rule_14">rule (14)</a> (regex <- COLUMN TILDE COLUMN .)
+    $end            reduce using <a href="#rule_14">rule (14)</a> (regex <- COLUMN TILDE COLUMN .)
+
+
+<div id="state_38" /><b>state 38</b>
+
+    <a href="#rule_15">Rule (15)</a> regex <- COLUMN TILDE REGEX_UNQUOTED .
+    AND             reduce using <a href="#rule_15">rule (15)</a> (regex <- COLUMN TILDE REGEX_UNQUOTED .)
+    ORDER_BY        reduce using <a href="#rule_15">rule (15)</a> (regex <- COLUMN TILDE REGEX_UNQUOTED .)
+    WHERE           reduce using <a href="#rule_15">rule (15)</a> (regex <- COLUMN TILDE REGEX_UNQUOTED .)
+    SELECT          reduce using <a href="#rule_15">rule (15)</a> (regex <- COLUMN TILDE REGEX_UNQUOTED .)
+    TOP             reduce using <a href="#rule_15">rule (15)</a> (regex <- COLUMN TILDE REGEX_UNQUOTED .)
+    FLAG            reduce using <a href="#rule_15">rule (15)</a> (regex <- COLUMN TILDE REGEX_UNQUOTED .)
+    COLUMN          reduce using <a href="#rule_15">rule (15)</a> (regex <- COLUMN TILDE REGEX_UNQUOTED .)
+    $end            reduce using <a href="#rule_15">rule (15)</a> (regex <- COLUMN TILDE REGEX_UNQUOTED .)
+
+
+<div id="state_39" /><b>state 39</b>
+
+    <a href="#rule_16">Rule (16)</a> regex <- COLUMN TILDE REGEX_SLASHED .
+    AND             reduce using <a href="#rule_16">rule (16)</a> (regex <- COLUMN TILDE REGEX_SLASHED .)
+    ORDER_BY        reduce using <a href="#rule_16">rule (16)</a> (regex <- COLUMN TILDE REGEX_SLASHED .)
+    WHERE           reduce using <a href="#rule_16">rule (16)</a> (regex <- COLUMN TILDE REGEX_SLASHED .)
+    SELECT          reduce using <a href="#rule_16">rule (16)</a> (regex <- COLUMN TILDE REGEX_SLASHED .)
+    TOP             reduce using <a href="#rule_16">rule (16)</a> (regex <- COLUMN TILDE REGEX_SLASHED .)
+    FLAG            reduce using <a href="#rule_16">rule (16)</a> (regex <- COLUMN TILDE REGEX_SLASHED .)
+    COLUMN          reduce using <a href="#rule_16">rule (16)</a> (regex <- COLUMN TILDE REGEX_SLASHED .)
+    $end            reduce using <a href="#rule_16">rule (16)</a> (regex <- COLUMN TILDE REGEX_SLASHED .)
+
+
+<div id="state_40" /><b>state 40</b>
+
+    <a href="#rule_28">Rule (28)</a> column_sort_list <- column_sort_list , column_sort .
+    ,               reduce using <a href="#rule_28">rule (28)</a> (column_sort_list <- column_sort_list , column_sort .)
+    ORDER_BY        reduce using <a href="#rule_28">rule (28)</a> (column_sort_list <- column_sort_list , column_sort .)
+    WHERE           reduce using <a href="#rule_28">rule (28)</a> (column_sort_list <- column_sort_list , column_sort .)
+    SELECT          reduce using <a href="#rule_28">rule (28)</a> (column_sort_list <- column_sort_list , column_sort .)
+    TOP             reduce using <a href="#rule_28">rule (28)</a> (column_sort_list <- column_sort_list , column_sort .)
+    FLAG            reduce using <a href="#rule_28">rule (28)</a> (column_sort_list <- column_sort_list , column_sort .)
+    COLUMN          reduce using <a href="#rule_28">rule (28)</a> (column_sort_list <- column_sort_list , column_sort .)
+    $end            reduce using <a href="#rule_28">rule (28)</a> (column_sort_list <- column_sort_list , column_sort .)
+
+
+<div id="state_41" /><b>state 41</b>
+
+    <a href="#rule_23">Rule (23)</a> where_clause_expression <- where_clause_expression AND where_clause .
+    AND             reduce using <a href="#rule_23">rule (23)</a> (where_clause_expression <- where_clause_expression AND where_clause .)
+    ORDER_BY        reduce using <a href="#rule_23">rule (23)</a> (where_clause_expression <- where_clause_expression AND where_clause .)
+    WHERE           reduce using <a href="#rule_23">rule (23)</a> (where_clause_expression <- where_clause_expression AND where_clause .)
+    SELECT          reduce using <a href="#rule_23">rule (23)</a> (where_clause_expression <- where_clause_expression AND where_clause .)
+    TOP             reduce using <a href="#rule_23">rule (23)</a> (where_clause_expression <- where_clause_expression AND where_clause .)
+    FLAG            reduce using <a href="#rule_23">rule (23)</a> (where_clause_expression <- where_clause_expression AND where_clause .)
+    COLUMN          reduce using <a href="#rule_23">rule (23)</a> (where_clause_expression <- where_clause_expression AND where_clause .)
+    $end            reduce using <a href="#rule_23">rule (23)</a> (where_clause_expression <- where_clause_expression AND where_clause .)
+
+
+<div id="state_42" /><b>state 42</b>
+
+    <a href="#rule_25">Rule (25)</a> where_clause <- COLUMN EQ_TEST COLUMN .
+    AND             reduce using <a href="#rule_25">rule (25)</a> (where_clause <- COLUMN EQ_TEST COLUMN .)
+    ORDER_BY        reduce using <a href="#rule_25">rule (25)</a> (where_clause <- COLUMN EQ_TEST COLUMN .)
+    WHERE           reduce using <a href="#rule_25">rule (25)</a> (where_clause <- COLUMN EQ_TEST COLUMN .)
+    SELECT          reduce using <a href="#rule_25">rule (25)</a> (where_clause <- COLUMN EQ_TEST COLUMN .)
+    TOP             reduce using <a href="#rule_25">rule (25)</a> (where_clause <- COLUMN EQ_TEST COLUMN .)
+    FLAG            reduce using <a href="#rule_25">rule (25)</a> (where_clause <- COLUMN EQ_TEST COLUMN .)
+    COLUMN          reduce using <a href="#rule_25">rule (25)</a> (where_clause <- COLUMN EQ_TEST COLUMN .)
+    $end            reduce using <a href="#rule_25">rule (25)</a> (where_clause <- COLUMN EQ_TEST COLUMN .)
+
+
+<div id="state_43" /><b>state 43</b>
+
+    <a href="#rule_24">Rule (24)</a> where_clause <- COLUMN EQ_TEST DATETIME .
+    AND             reduce using <a href="#rule_24">rule (24)</a> (where_clause <- COLUMN EQ_TEST DATETIME .)
+    ORDER_BY        reduce using <a href="#rule_24">rule (24)</a> (where_clause <- COLUMN EQ_TEST DATETIME .)
+    WHERE           reduce using <a href="#rule_24">rule (24)</a> (where_clause <- COLUMN EQ_TEST DATETIME .)
+    SELECT          reduce using <a href="#rule_24">rule (24)</a> (where_clause <- COLUMN EQ_TEST DATETIME .)
+    TOP             reduce using <a href="#rule_24">rule (24)</a> (where_clause <- COLUMN EQ_TEST DATETIME .)
+    FLAG            reduce using <a href="#rule_24">rule (24)</a> (where_clause <- COLUMN EQ_TEST DATETIME .)
+    COLUMN          reduce using <a href="#rule_24">rule (24)</a> (where_clause <- COLUMN EQ_TEST DATETIME .)
+    $end            reduce using <a href="#rule_24">rule (24)</a> (where_clause <- COLUMN EQ_TEST DATETIME .)
+
+
+<div id="state_44" /><b>state 44</b>
+
+    <a href="#rule_26">Rule (26)</a> where_clause <- COLUMN EQ_TEST QUOTED_STRING .
+    AND             reduce using <a href="#rule_26">rule (26)</a> (where_clause <- COLUMN EQ_TEST QUOTED_STRING .)
+    ORDER_BY        reduce using <a href="#rule_26">rule (26)</a> (where_clause <- COLUMN EQ_TEST QUOTED_STRING .)
+    WHERE           reduce using <a href="#rule_26">rule (26)</a> (where_clause <- COLUMN EQ_TEST QUOTED_STRING .)
+    SELECT          reduce using <a href="#rule_26">rule (26)</a> (where_clause <- COLUMN EQ_TEST QUOTED_STRING .)
+    TOP             reduce using <a href="#rule_26">rule (26)</a> (where_clause <- COLUMN EQ_TEST QUOTED_STRING .)
+    FLAG            reduce using <a href="#rule_26">rule (26)</a> (where_clause <- COLUMN EQ_TEST QUOTED_STRING .)
+    COLUMN          reduce using <a href="#rule_26">rule (26)</a> (where_clause <- COLUMN EQ_TEST QUOTED_STRING .)
+    $end            reduce using <a href="#rule_26">rule (26)</a> (where_clause <- COLUMN EQ_TEST QUOTED_STRING .)
+
+
+<div id="state_45" /><b>state 45</b>
+
+    <a href="#rule_18">Rule (18)</a> select_list <- select_list , select_item .
+    ,               reduce using <a href="#rule_18">rule (18)</a> (select_list <- select_list , select_item .)
+    ORDER_BY        reduce using <a href="#rule_18">rule (18)</a> (select_list <- select_list , select_item .)
+    WHERE           reduce using <a href="#rule_18">rule (18)</a> (select_list <- select_list , select_item .)
+    SELECT          reduce using <a href="#rule_18">rule (18)</a> (select_list <- select_list , select_item .)
+    TOP             reduce using <a href="#rule_18">rule (18)</a> (select_list <- select_list , select_item .)
+    FLAG            reduce using <a href="#rule_18">rule (18)</a> (select_list <- select_list , select_item .)
+    COLUMN          reduce using <a href="#rule_18">rule (18)</a> (select_list <- select_list , select_item .)
+    $end            reduce using <a href="#rule_18">rule (18)</a> (select_list <- select_list , select_item .)
+
+
+Conflicts:
+
+shift/reduce conflict for FLAG in <a href="#state_11">state (11)</a> resolved as shift
+</pre>
