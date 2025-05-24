@@ -1,5 +1,6 @@
 """File database project."""
 
+import sys
 import os
 from pathlib import Path
 
@@ -9,10 +10,22 @@ __author__ = 'Stephen Mildenhall'
 __date__ = '2025-05-14'
 
 
+# def _get_local_folder():
+#     local_app_data = Path(os.environ["LOCALAPPDATA"])
+#     my_app_data = local_app_data / __appname__
+#     my_app_data.mkdir(parents=True, exist_ok=True)
+#     return my_app_data
+
+
 def _get_local_folder():
-    local_app_data = Path(os.environ["LOCALAPPDATA"])
-    my_app_data = local_app_data / __appname__
-    my_app_data.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "win32":
+        base = Path(os.environ["LOCALAPPDATA"])
+    else:
+        base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+    my_app_data = base / __appname__
+    if not my_app_data.exists():
+        my_app_data.mkdir(parents=True, exist_ok=True)
+        # raise FileNotFoundError("Application database does not exist.")
     return my_app_data
 
 
