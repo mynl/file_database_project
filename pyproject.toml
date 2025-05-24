@@ -15,7 +15,8 @@ dependencies = [
     "pyarrow",
     "click",
     "pyyaml",
-    "wmi"
+    "wmi",
+    "aggregate"
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
