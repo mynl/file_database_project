@@ -222,7 +222,8 @@ class ProjectManager():
                         # whole path
                         "path": str(p),
                         "mod": stat.st_mtime_ns,
-                        "create": stat.st_ctime,
+                        "create": stat.st_ctime_ns,
+                        "access": stat.st_atime_ns,
                         "node": stat.st_ino,
                         "links": stat.st_nlink,
                         "size": stat.st_size,
@@ -254,12 +255,12 @@ class ProjectManager():
             tz = self.timezone
             # low res second version
             # df["mod"] = pd.to_datetime(df["mod"], unit="s").dt.tz_localize("UTC").dt.tz_convert(tz)
-            df_new["create"] = pd.to_datetime(
-                df_new["create"], unit="s").dt.tz_localize("UTC").dt.tz_convert(tz)
             # more technically correct but makes querying harder
             # df["mod"] = pd.to_datetime(df["mod"], unit="ns", utc=True).dt.tz_convert(config["timezone"])
             # so go with
-            df_new["mod"] = pd.to_datetime(df_new["mod"], unit="ns")
+            df_new["create"] = pd.to_datetime(df_new["create"], unit="ns").dt.tz_localize("UTC").dt.tz_convert(tz)
+            df_new["mod"] = pd.to_datetime(df_new["mod"], unit="ns").dt.tz_localize("UTC").dt.tz_convert(tz)
+            df_new["access"] = pd.to_datetime(df_new["access"], unit="ns").dt.tz_localize("UTC").dt.tz_convert(tz)
 
             # Combine with existing data (replace updated paths)
             if not existing_df.empty:
