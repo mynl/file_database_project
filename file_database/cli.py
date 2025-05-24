@@ -1,4 +1,4 @@
-"""Implement command line interface."""
+"""Implement command line interface for file_database."""
 
 from functools import partial
 import os
@@ -39,7 +39,7 @@ def main():
 def index(config: Path):
     """Run the indexer and write Feather file."""
     pm = ProjectManager(config)
-    pm.index_files(config)
+    pm.index(config)
     click.echo(f"Index update completed.")
 
 
@@ -63,7 +63,7 @@ def create_config(config_path, base):
     project = click.prompt("Project name", default="File Database Small Test")
     db_default = config_dir / (project.replace(' ', '-') + '.fdb-feather')
 
-    config={
+    config = {
         "project": project,
         "hostname": click.prompt("Hostname", default=socket.gethostname()),
         "database": click.prompt("Database path", default=db_default),
@@ -97,23 +97,23 @@ def create_config(config_path, base):
 @ click.option('-t', '--tablefmt', default='', show_default=True, help='Markdown table format (see tabulate docs); default uses config file value.')
 def query_repl(config: Path, tablefmt: str):
     """Interactive REPL to run multiple queries on the file index with fuzzy completion."""
-    pm=ProjectManager(config)
+    pm = ProjectManager(config)
     print(pm)
     if tablefmt == '':
-        tablefmt=pm.tablefmt
+        tablefmt = pm.tablefmt
     click.echo(f"Loaded {len(pm.database):,} rows from {pm.project}")
     click.echo(
         "Enter pandas query expressions (type 'exit', 'x', 'quit' or 'q' to stop and ? for help).\n")
 
-    keywords=['cls', 'and', 'or'] + list(pm.database.columns)
-    word_completer=FuzzyCompleter(WordCompleter(keywords, sentence=True))
-    session=PromptSession(completer=word_completer)
-    result=None
+    keywords = ['cls', 'and', 'or'] + list(pm.database.columns)
+    word_completer = FuzzyCompleter(WordCompleter(keywords, sentence=True))
+    session = PromptSession(completer=word_completer)
+    result = None
 
     while True:
         try:
-            expr=session.prompt(HTML('<ansiyellow>>> </ansiyellow>')).strip()
-            pipe=False
+            expr = session.prompt(HTML('<ansiyellow>>> </ansiyellow>')).strip()
+            pipe = False
             if expr.lower() in {"exit", "x", "quit", "q"}:
                 break
             elif expr == "?":
@@ -126,8 +126,8 @@ def query_repl(config: Path, tablefmt: str):
                 continue
             elif expr.find(">") >= 0:
                 # contains a pipe
-                expr, pipe=expr.split('>')
-                pipe=pipe.strip()
+                expr, pipe = expr.split('>')
+                pipe = pipe.strip()
             elif expr.startswith('o'):
                 # open files
                 if result is None:
@@ -135,11 +135,11 @@ def query_repl(config: Path, tablefmt: str):
                     continue
                 # open file mode, start with o n
                 try:
-                    expr=int(expr[1:].strip())
+                    expr = int(expr[1:].strip())
                 except ValueError:
                     print('Wrong syntax for open, expect o index number')
                 try:
-                    fname=result.loc[expr, 'path']
+                    fname = result.loc[expr, 'path']
                     os.startfile(fname)
                 except KeyError:
                     print(f'Key {expr} not found.')
@@ -150,10 +150,10 @@ def query_repl(config: Path, tablefmt: str):
                 continue
 
             # if here, run query work
-            result, unrestricted_len=pm.query(expr)
+            result = pm.query(expr)
             click.echo(_df_to_str(result, tablefmt=tablefmt))
             click.echo(
-                f'{unrestricted_len:,d} unrestricted results, {len(result)} shown.')
+                f'{pm._last_unrestricted:,d} unrestricted results, {len(result)} shown.')
             if pipe:
                 click.echo(
                     f'Found pipe clause {pipe = } TODO: deal with this!')
@@ -161,20 +161,18 @@ def query_repl(config: Path, tablefmt: str):
             click.echo(f"[Error] {e}")
 
 
-
-
 def _df_to_str(df, tablefmt):
     """Nice prepped df as string for printing."""
-    f=fGT(df)
-    df=f.df
-    dfa=[i[4:] for i in f.df_aligners]
-    colw={c: 15 for c in df.columns}
+    f = fGT(df)
+    df = f.df
+    dfa = [i[4:] for i in f.df_aligners]
+    colw = {c: 15 for c in df.columns}
     for c in ['dir', 'path', 'hash']:
         if c in df:
-            colw[c]=min(40, df[c].str.len().max())
+            colw[c] = min(40, df[c].str.len().max())
     for c in ['name']:
         if c in df:
-            colw[c]=min(60, df[c].str.len().max())
+            colw[c] = min(60, df[c].str.len().max())
         return df.to_markdown(
             index=False,
             colalign=dfa,
