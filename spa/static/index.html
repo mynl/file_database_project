@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="static/favicon.ico" rel="icon">
+  <title>File Finder (Vanilla)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 1rem 1.25rem; }
+    .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+    input[type=text] { padding: 0.4rem 0.6rem; min-width: 28rem; }
+    textarea { width: 28rem; height: 6rem; }
+    button { padding: 0.45rem 0.8rem; cursor: pointer; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+    th, td { border: 1px solid #ddd; padding: 0.4rem 0.5rem; text-align: left; }
+    th { background: #f3f3f3; position: sticky; top: 0; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .muted { color: #666; }
+    #results th.col-name,   #results td.col-name   { width: 35%; }
+    #results th.col-subdir, #results td.col-subdir { width: 25%; }
+    #results th.col-ext,    #results td.col-ext    { width: 6%;  }
+    #results th.col-size,   #results td.col-size   { width: 10%; text-align: right; }
+    #results th.col-mod,    #results td.col-mod    { width: 18%; }
+    #results th.col-open,   #results td.col-open   { width: 6%;  }
+  </style>
+</head>
+<body>
+  <h2>File Finder</h2>
+
+  <div class="row" style="margin-bottom:0.5rem;">
+    <button id="pickBtn">Pick folder…</button>
+    <input id="rootInput" type="text" placeholder="Or paste a directory path" />
+    <button id="scanBtn">Scan</button>
+    <span id="status" class="muted"></span>
+  </div>
+
+  <div class="row" style="margin-bottom:0.5rem; align-items:flex-start;">
+    <div>
+      <label for="excludes"><strong>Exclude regex (one per line, case-insensitive):</strong></label><br>
+      <textarea id="excludes">^\.
+\.git$
+__pycache__$
+node_modules$
+\.cache$
+</textarea>
+    </div>
+    <div>
+      <label for="query"><strong>Search:</strong></label><br>
+      <input id="query" type="text" placeholder="Type to search names and path parts…" />
+    </div>
+    <div>
+      <label for="timebox"><strong>Time:</strong></label><br>
+      <input id="timebox" type="text"
+             placeholder="today | today-3 | week | week-3 | month | month-3 | year | year-2" />
+    </div>
+  </div>
+
+  <table id="results">
+    <thead>
+      <tr>
+        <th class="col-name">Name</th>
+        <th class="col-subdir">Subdir</th>
+        <th class="col-ext">Ext</th>
+        <th class="col-size">Size (bytes)</th>
+        <th class="col-mod">Modified (UTC)</th>
+        <th class="col-open">Open</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+
+  <script>
+    // Debounce utility
+    function debounce(fn, delay) {
+      let t = null;
+      return function (...args) {
+        clearTimeout(t);
+        t = setTimeout(() => fn.apply(this, args), delay);
+      }
+    }
+
+    const pickBtn = document.getElementById('pickBtn');
+    const scanBtn = document.getElementById('scanBtn');
+    const rootInput = document.getElementById('rootInput');
+    const excludes = document.getElementById('excludes');
+    const query = document.getElementById('query');
+    const status = document.getElementById('status');
+    const tbody = document.querySelector('#results tbody');
+    const timebox = document.getElementById('timebox');
+
+    async function postJSON(url, body) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    }
+
+    async function getJSON(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    }
+
+    function readExcludes() {
+      return excludes.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    }
+
+    function setStatus(msg) {
+      status.textContent = msg || '';
+    }
+
+    function renderRows(rows) {
+      const frag = document.createDocumentFragment();
+      for (const r of rows) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="mono">${escapeHtml(r.name)}</td>
+          <td class="mono">${escapeHtml(r.subdir)}</td>
+          <td>${escapeHtml(r.ext || '')}</td>
+          <td class="mono">${r.size_bytes}</td>
+          <td class="mono">${escapeHtml(r.modified_iso)}</td>
+          <td><a href="#" data-path="${encodeURIComponent(r.path)}" class="open">Open</a></td>
+        `;
+        frag.appendChild(tr);
+      }
+      tbody.replaceChildren(frag);
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"] /g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',' ':'&nbsp;'}[c]));
+    }
+
+    async function pickFolder() {
+      try {
+        const data = await postJSON('/api/pick', {});
+        if (data.root) {
+          rootInput.value = data.root;
+        }
+      } catch (e) { setStatus(String(e)); }
+    }
+
+    async function scan() {
+      const root = rootInput.value.trim();
+      if (!root) { setStatus('Enter or pick a folder.'); return; }
+      setStatus('Scanning…');
+      try {
+        const data = await postJSON('/api/scan', { root, excludes: readExcludes() });
+        setStatus(`Indexed ${data.count} files under ${data.root}`);
+        await searchNow();
+      } catch (e) { setStatus(String(e)); }
+    }
+
+    async function searchNow() {
+      const q = encodeURIComponent(query.value.trim());
+      const t = encodeURIComponent(timebox.value.trim());
+      try {
+        const data = await getJSON(`/api/search?q=${q}&t=${t}&n=500`);
+        renderRows(data.rows || []);
+      } catch (e) { setStatus(String(e)); }
+    }
+
+    async function openPath(encodedPath) {
+      try {
+        await getJSON(`/api/open?path=${encodedPath}`);
+      } catch (e) { setStatus(String(e)); }
+    }
+
+    tbody.addEventListener('click', (ev) => {
+      const a = ev.target.closest('a.open');
+      if (a) {
+        ev.preventDefault();
+        openPath(a.getAttribute('data-path'));
+      }
+    });
+
+    pickBtn.addEventListener('click', pickFolder);
+    scanBtn.addEventListener('click', scan);
+    query.addEventListener('input', debounce(searchNow, 120));
+    timebox.addEventListener('input', debounce(searchNow, 120));
+  </script>
+</body>
+</html>
