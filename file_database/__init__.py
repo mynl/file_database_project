@@ -7,7 +7,7 @@ from pathlib import Path
 
 __appname__ = 'file_database'
 __author__ = 'Stephen Mildenhall'
-__date__ = '2025-05-14'
+__date__ = '2025'
 
 
 # def _get_local_folder():

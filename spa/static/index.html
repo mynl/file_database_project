@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="static/favicon.ico" rel="icon">
-  <title>File Finder (Vanilla)</title>
+  <title>File Finder (v 1.0)</title>
   <style>
     body { font-family: system-ui, sans-serif; margin: 1rem 1.25rem; }
     .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
@@ -12,12 +12,12 @@
     textarea { width: 28rem; height: 6rem; }
     button { padding: 0.45rem 0.8rem; cursor: pointer; }
     table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
-    th, td { border: 1px solid #ddd; padding: 0.4rem 0.5rem; text-align: left; }
+    th, td { border: 1px solid #ddd; padding: 0.4rem 0.5rem; }
     th { background: #f3f3f3; position: sticky; top: 0; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .muted { color: #666; }
-    #results th.col-name,   #results td.col-name   { width: 35%; }
-    #results th.col-subdir, #results td.col-subdir { width: 25%; }
+    #results th.col-name,   #results td.col-name   { width: 50%; }
+    #results th.col-subdir, #results td.col-subdir { width: 10%; }
     #results th.col-ext,    #results td.col-ext    { width: 6%;  }
     #results th.col-size,   #results td.col-size   { width: 10%; text-align: right; }
     #results th.col-mod,    #results td.col-mod    { width: 18%; }
@@ -120,9 +120,9 @@ node_modules$
         tr.innerHTML = `
           <td class="mono">${escapeHtml(r.name)}</td>
           <td class="mono">${escapeHtml(r.subdir)}</td>
-          <td>${escapeHtml(r.ext || '')}</td>
-          <td class="mono">${r.size_bytes}</td>
-          <td class="mono">${escapeHtml(r.modified_iso)}</td>
+          <td style="text-align: center;">${escapeHtml(r.ext || '')}</td>
+          <td class="mono" style="text-align: right;">${r.size_bytes}</td>
+          <td class="mono" style="text-align: center;">${escapeHtml(r.modified_iso)}</td>
           <td><a href="#" data-path="${encodeURIComponent(r.path)}" class="open">Open</a></td>
         `;
         frag.appendChild(tr);
@@ -166,6 +166,22 @@ node_modules$
     async function openPath(encodedPath) {
       try {
         await getJSON(`/api/open?path=${encodedPath}`);
+      } catch (e) { setStatus(String(e)); }
+    }
+
+    // After clicking Scan, display build status
+    async function scan() {
+      const root = rootInput.value.trim();
+      if (!root) { setStatus('Enter or pick a folder.'); return; }
+      setStatus('Scanning…');
+      try {
+        const resp = await postJSON('/api/scan', { root, excludes: readExcludes() });
+        if (resp.status === 'building') {
+          setStatus('Loading cached data… building in background.');
+        } else {
+          setStatus(`Loaded cached data (${resp.count} files). Refresh kicked off…`);
+        }
+        await searchNow();
       } catch (e) { setStatus(String(e)); }
     }
 

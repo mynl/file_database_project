@@ -31,6 +31,8 @@ Usage
 
 """
 
+from concurrent.futures import ThreadPoolExecutor, Future
+from hashlib import blake2b
 import json
 import os
 import re
@@ -38,11 +40,14 @@ import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from threading import Lock
+from time import time
 from typing import Iterable, List, Optional, Tuple
 try:
     from zoneinfo import ZoneInfo  # Py3.9+
 except Exception:  # pragma: no cover
     ZoneInfo = None  # type: ignore
+
+
 
 import pandas as pd
 from flask import Flask, jsonify, make_response, request, send_from_directory
@@ -60,9 +65,132 @@ _CACHE = {
     "df": None,              # pd.DataFrame | None
     "corpus": [],            # list[str] full paths for matcher
 }
+_EXECUTOR = ThreadPoolExecutor(max_workers=2)
+# Per-key cache entries keyed by (root, excludes) hash
+_CACHE_DB: dict[str, dict] = {}   # key -> entry dict
+_ACTIVE_KEY: str | None = None    # last scanned/selected key
 
 
 # --- Helpers ---
+def _cache_base_dir() -> Path:
+    """Return %LOCALAPPDATA%/file_database/spa as the on-disk cache root."""
+    base = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))).expanduser()
+    return (base / "file_database" / "spa")
+
+
+def _cache_paths_for(key: str) -> tuple[Path, Path]:
+    """Return (parquet_path, meta_json_path) for a given cache key."""
+    cachedir = _cache_base_dir()
+    cachedir.mkdir(parents=True, exist_ok=True)
+    return cachedir / f"{key}.parquet", cachedir / f"{key}.json"
+
+
+def _key_for(root: Path, excludes_list: list[str]) -> str:
+    """Stable key from resolved root + normalized excludes list."""
+    r = str(root.resolve())
+    ex = "\n".join(sorted(s.strip() for s in excludes_list if s.strip()))
+    h = blake2b(digest_size=16)
+    h.update(r.encode("utf-8"))
+    h.update(b"\n--\n")
+    h.update(ex.encode("utf-8"))
+    return h.hexdigest()
+
+
+def _save_disk_cache(key: str, df: pd.DataFrame, meta: dict) -> None:
+    """Persist df as parquet and meta.json next to it."""
+    pq, mj = _cache_paths_for(key)
+    # Requires pyarrow or fastparquet installed
+    df.to_parquet(pq, index=False)
+    mj.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+
+def _load_disk_cache(key: str) -> tuple[pd.DataFrame, dict] | tuple[None, None]:
+    """Load df+meta from disk; returns (None, None) if missing."""
+    pq, mj = _cache_paths_for(key)
+    if not pq.exists() or not mj.exists():
+        return None, None
+    df = pd.read_parquet(pq)
+    meta = json.loads(mj.read_text(encoding="utf-8"))
+    return df, meta
+
+
+def _ensure_entry(key: str, root: Path, excludes_list: list[str], excludes_rx: list[re.Pattern]) -> dict:
+    """Get-or-create in-memory entry for this key."""
+    ent = _CACHE_DB.get(key)
+    if ent:
+        return ent
+    ent = {
+        "root": root.resolve(),
+        "excludes": list(excludes_list),
+        "excludes_rx": list(excludes_rx),
+        "active_df": None,          # pd.DataFrame | None
+        "active_corpus": [],        # list[str]
+        "gen": 0,                   # int
+        "built_at": None,           # float epoch seconds
+        "future": None,             # Future | None
+        "pending": None,            # tuple[df, corpus, built_at] | None
+        "lock": Lock(),
+    }
+    # Try disk cache immediately
+    df_disk, meta = _load_disk_cache(key)
+    if df_disk is not None:
+        ent["active_df"] = df_disk
+        ent["active_corpus"] = list(df_disk["path"]) if "path" in df_disk.columns else []
+        ent["gen"] = int(meta.get("gen", 0))
+        ent["built_at"] = float(meta.get("built_at", time()))
+    _CACHE_DB[key] = ent
+    return ent
+
+
+def _schedule_refresh(key: str) -> None:
+    """Spawn a one-shot build job if not already running."""
+    ent = _CACHE_DB[key]
+    with ent["lock"]:
+        fut: Future | None = ent.get("future")
+        if fut and not fut.done():
+            return
+        # Submit new job
+        fut = _EXECUTOR.submit(_build_job, ent["root"], ent["excludes_rx"])
+        ent["future"] = fut
+
+
+def _build_job(root: Path, excludes_rx: list[re.Pattern]) -> tuple[pd.DataFrame, list[str], float]:
+    """Background build: scan and return (df, corpus, built_at)."""
+    df, corpus = _scan(root, excludes_rx)
+    return df, corpus, time()
+
+
+def _maybe_adopt_refreshed(key: str) -> None:
+    """If a background refresh finished, swap it in and persist."""
+    ent = _CACHE_DB.get(key)
+    if not ent:
+        return
+    with ent["lock"]:
+        fut: Future | None = ent.get("future")
+        if not fut or not fut.done():
+            return
+        try:
+            df, corpus, built_at = fut.result()
+        finally:
+            ent["future"] = None
+        # Swap active snapshot
+        ent["active_df"] = df
+        ent["active_corpus"] = corpus
+        ent["gen"] = (ent.get("gen", 0) or 0) + 1
+        ent["built_at"] = built_at
+        # Persist to disk
+        meta = {
+            "root": str(ent["root"]),
+            "excludes": ent["excludes"],
+            "gen": ent["gen"],
+            "built_at": built_at,
+            "rows": int(len(df)),
+        }
+        _save_disk_cache(key, df, meta)
+        # Refresh global matcher with new corpus
+        _MATCHER.load(corpus)
+
+
 def _compile_excludes(patterns: Iterable[str]) -> List[re.Pattern]:
     """Compile exclude regexes as case-insensitive; invalid patterns are ignored.
 
@@ -130,7 +258,8 @@ def _scan(root: Path, excludes: List[re.Pattern]) -> Tuple[pd.DataFrame, List[st
                 # now relative, e.g. "subdir/file.txt"
                 subdir = str(rel_path)
             except ValueError:
-                print(f'ValueError for {p.resolve()}')
+                # links etc. will cause an error
+                # print(f'ValueError for {p.resolve()}')
                 subdir = str(p.parent)
             recs.append({
                 "path": abs_path,
@@ -338,11 +467,10 @@ def pick_folder():
 
 @app.post("/api/scan")
 def scan():
-    """Scan the directory; body must include JSON with keys: root, excludes (list[str])."""
+    """Scan/refresh cache for {root, excludes}; manual refresh on click."""
     data = request.get_json(force=True, silent=True) or {}
     root_s = data.get("root")
     excludes_list = data.get("excludes", [])
-
     if not root_s:
         return make_response(jsonify({"error": "Missing 'root'"}), 400)
 
@@ -351,20 +479,66 @@ def scan():
         return make_response(jsonify({"error": "Root is not a directory"}), 400)
 
     rx = _compile_excludes(excludes_list)
-    df, corpus = _scan(root, rx)
+    key = _key_for(root, excludes_list)
+    ent = _ensure_entry(key, root, excludes_list, rx)
 
-    with _CACHE_LOCK:
-        _CACHE["root"] = root
-        _CACHE["excludes"] = list(excludes_list)
-        _CACHE["df"] = df
-        _CACHE["corpus"] = corpus
-        _MATCHER.load(corpus)
+    # Mark this key active for subsequent /api/search and /api/open
+    global _ACTIVE_KEY
+    _ACTIVE_KEY = key
 
+    # If no active snapshot in memory, try disk (already done in _ensure_entry).
+    # If still cold, kick a build and report 'building'.
+    if ent["active_df"] is None:
+        _schedule_refresh(key)
+        return jsonify({
+            "status": "building",
+            "root": str(root),
+            "count": 0,
+            "gen": 0,
+        })
+
+    # Warm start: schedule a refresh build now (manual trigger) and return current stats.
+    _schedule_refresh(key)
+    df: pd.DataFrame = ent["active_df"]
+    _MATCHER.load(ent["active_corpus"])  # ensure matcher reflects active corpus
     return jsonify({
-        "count": int(len(df)),
+        "status": "warm",
         "root": str(root),
+        "count": int(len(df)),
+        "gen": int(ent.get("gen", 0)),
+        "built_at": ent.get("built_at"),
         "columns": list(df.columns),
     })
+
+# @app.post("/api/scan")
+# def scan():
+#     """Scan the directory; body must include JSON with keys: root, excludes (list[str])."""
+#     data = request.get_json(force=True, silent=True) or {}
+#     root_s = data.get("root")
+#     excludes_list = data.get("excludes", [])
+
+#     if not root_s:
+#         return make_response(jsonify({"error": "Missing 'root'"}), 400)
+
+#     root = Path(root_s).resolve()
+#     if not root.exists() or not root.is_dir():
+#         return make_response(jsonify({"error": "Root is not a directory"}), 400)
+
+#     rx = _compile_excludes(excludes_list)
+#     df, corpus = _scan(root, rx)
+
+#     with _CACHE_LOCK:
+#         _CACHE["root"] = root
+#         _CACHE["excludes"] = list(excludes_list)
+#         _CACHE["df"] = df
+#         _CACHE["corpus"] = corpus
+#         _MATCHER.load(corpus)
+
+#     return jsonify({
+#         "count": int(len(df)),
+#         "root": str(root),
+#         "columns": list(df.columns),
+#     })
 
 
 @app.get("/api/search")
@@ -380,8 +554,21 @@ def search():
     n = request.args.get("n", default=200, type=int)
     t = request.args.get("t", default="", type=str)
 
+    # Adopt refreshed snapshot if available
+    if _ACTIVE_KEY:
+        _maybe_adopt_refreshed(_ACTIVE_KEY)
+
     with _CACHE_LOCK:
-        df: Optional[pd.DataFrame] = _CACHE.get("df")
+        # df: Optional[pd.DataFrame] = _CACHE.get("df")
+        # if df is None or df.empty:
+        #     return jsonify({"rows": [], "count": 0})
+
+        # Select active entry + df/corpus
+        if not _ACTIVE_KEY or _ACTIVE_KEY not in _CACHE_DB:
+            return jsonify({"rows": [], "count": 0})
+        ent = _CACHE_DB[_ACTIVE_KEY]
+        df: Optional[pd.DataFrame] = ent.get("active_df")
+        corpus: list[str] = ent.get("active_corpus") or []
         if df is None or df.empty:
             return jsonify({"rows": [], "count": 0})
 
@@ -434,28 +621,53 @@ def search():
         out = rows_df[["name", "subdir", "ext", "size_bytes", "modified_iso", "path"]].to_dict(orient="records")
         return jsonify({"rows": out, "count": len(out)})
 
+# OPTIONAL: make /api/open tolerant to relative paths (drop in)
 @app.get("/api/open")
 def open_file():
-    """Open a file via Windows default application.
-
-    Security: only allow paths under the cached root.
-    """
+    """Open a file via Windows default application. Security: restrict to active root."""
     path_s = request.args.get("path")
     if not path_s:
         return make_response(jsonify({"error": "Missing 'path'"}), 400)
-    with _CACHE_LOCK:
-        root: Optional[Path] = _CACHE.get("root")
-        if root is None:
-            return make_response(jsonify({"error": "No root set"}), 400)
-        p = Path(path_s).resolve()
-        try:
-            p.relative_to(root)
-        except Exception:
-            return make_response(jsonify({"error": "Path not under root"}), 400)
+    if not _ACTIVE_KEY or _ACTIVE_KEY not in _CACHE_DB:
+        return make_response(jsonify({"error": "No active root"}), 400)
+
+    ent = _CACHE_DB[_ACTIVE_KEY]
+    root: Path = ent["root"]
+
+    p_in = Path(path_s)
+    p = (root / p_in).resolve() if not p_in.is_absolute() else p_in.resolve()
+    try:
+        p.relative_to(root)
+    except Exception:
+        return make_response(jsonify({"error": "Path not under root"}), 400)
     if not p.exists() or not p.is_file():
         return make_response(jsonify({"error": "Not a file"}), 400)
     os.startfile(str(p))
     return jsonify({"ok": True})
+
+
+# @app.get("/api/open")
+# def open_file():
+#     """Open a file via Windows default application.
+
+#     Security: only allow paths under the cached root.
+#     """
+#     path_s = request.args.get("path")
+#     if not path_s:
+#         return make_response(jsonify({"error": "Missing 'path'"}), 400)
+#     with _CACHE_LOCK:
+#         root: Optional[Path] = _CACHE.get("root")
+#         if root is None:
+#             return make_response(jsonify({"error": "No root set"}), 400)
+#         p = Path(path_s).resolve()
+#         try:
+#             p.relative_to(root)
+#         except Exception:
+#             return make_response(jsonify({"error": "Path not under root"}), 400)
+#     if not p.exists() or not p.is_file():
+#         return make_response(jsonify({"error": "Not a file"}), 400)
+#     os.startfile(str(p))
+#     return jsonify({"ok": True})
 
 
 @app.get("/")
@@ -464,11 +676,11 @@ def index():
     return send_from_directory(app.static_folder, "index.html")
 
 
-@app.after_request
-def _no_cache(resp):
-    """Disable client caching in dev so static edits show on refresh."""
-    resp.headers["Cache-Control"] = "no-store"
-    return resp
+# @app.after_request
+# def _no_cache(resp):
+#     """Disable client caching in dev so static edits show on refresh."""
+#     resp.headers["Cache-Control"] = "no-store"
+#     return resp
 
 
 if __name__ == "__main__":
