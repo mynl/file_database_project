@@ -2,6 +2,8 @@
 
 Fast index and query of local files using `pandas` and `pyarrow`.
 
+Post SPA-epiphany...now built SPA front-end! 
+
 ## Features
 
 - Recursively index files in specified directories
@@ -25,7 +27,7 @@ file-db query --expr "size > 1e7 and suffix == '.csv'"
 ## Query Examples
 
 recent files, top 10, drop dir column but add create column, files with names
-matching regex "q?md$", which means suffix qmd or md. 
+matching regex "q?md$", which means suffix qmd or md.
 
 ```sql
 verbose recent top 10 select !dir,create ! q?md$
@@ -35,7 +37,7 @@ verbose recent top 10 select !dir,create ! q?md$
 
 ## Min config file
 
-included/excluded files must not be empty. 
+included/excluded files must not be empty.
 
 ```yaml
 project: Samsung 64GB compact flash
@@ -48,7 +50,7 @@ excluded_files: []
 excluded_files:
 hash_files: true
 hash_workers: 6
-last_indexed: 0 
+last_indexed: 0
 timezone: Europe/London
 tablefmt: mixed_grid
 ```
@@ -60,9 +62,9 @@ tablefmt: mixed_grid
 * Create job and python path
 * query > file work
 * add duplicates and hardlinks key works
-* parse queries in order independent manner 
-* GT should have a repr_text version! 
-* directory sizes?! 
+* parse queries in order independent manner
+* GT should have a repr_text version!
+* directory sizes?!
 * recent directories (recent changes to dirs)
 
 
