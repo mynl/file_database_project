@@ -1,26 +1,22 @@
 # app.py
 """
-Flask backend for a small SPA that:
-- Pops a native Windows folder picker to choose the root directory.
-- Scans files recursively, excluding path parts that match user-provided regexes (case-insensitive).
-- Builds a pandas DataFrame with file metadata (ISO timestamps, sizes in bytes, types by extension).
-- Provides a simple fuzzy-search endpoint over full paths (placeholder; plug in Rust later).
-- Opens files via the Windows default application using os.startfile.
+Flask backend for a small SPA that browses a prebuilt File Database.
 
-Endpoints
----------
-POST  /api/pick                -> Launches a native folder picker (Windows) and returns the selected path
-POST  /api/scan                -> Body: {"root": str, "excludes": [regex,...]} ; scans + caches a DataFrame
-GET   /api/search?q=...&n=...  -> Fuzzy search over cached corpus; returns JSON rows
-GET   /api/open?path=...       -> Opens a file with its associated default app (Windows)
-GET   /                        -> Serves the single-page app (index.html)
+Refactor highlights
+-------------------
+- "Pick File Database Project": a dropdown populated from BASE_DIR with *.fdb-config.
+- "Load" button posts the chosen config to /api/load (you will fill in the loader).
+- No exclude UI; filtering is handled by the external file DB.
+- Search: fuzzy over full path; optional time filter (today/week/month/year with -N).
+- Open: uses os.startfile on Windows; only allows paths present in the loaded DB.
 
-Notes
------
-- Uses pathlib.Path for all file work.
-- Regex excludes are matched case-insensitively against EACH path component and the file extension.
-- "created" uses st_ctime on Windows.
-- Placeholder fuzzy matcher is intentionally simple; swap out with your Rust module.
+You fill in:
+- BASE_DIR (Path to directory containing *.fdb-config).
+- load_project_db(config_path: Path) -> pd.DataFrame  (loader for your DB).
+
+Expected DB columns (at minimum): name, path, mod, size, suffix
+We normalize to:
+- modified_ns (int UTC ns), modified_iso (str UTC), ext (no dot), parent (dirname), size_bytes (int).
 
 Usage
 -----
@@ -29,662 +25,338 @@ Usage
     set FLASK_APP=app.py
     python app.py
 
+
 """
 
-from concurrent.futures import ThreadPoolExecutor, Future
-from hashlib import blake2b
+from __future__ import annotations
+
 import json
 import os
 import re
-import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+import logging
 from pathlib import Path
 from threading import Lock
-from time import time
-from typing import Iterable, List, Optional, Tuple
-try:
-    from zoneinfo import ZoneInfo  # Py3.9+
-except Exception:  # pragma: no cover
-    ZoneInfo = None  # type: ignore
-
-
+from typing import List, Optional, Tuple
+import sys
+import yaml
 
 import pandas as pd
 from flask import Flask, jsonify, make_response, request, send_from_directory
 
-# --- App setup ---
+from rustfuzz import FuzzyMatcherMulti
+
+sys.path.append('\\s\\telos\\python\\file_database_project')
+from file_database import ProjectManager, BASE_DIR
+
+
+if __name__ != '__main__':
+    # defer set up with main
+    logger = logging.getLogger(__name__)
+
+# ---------------------------
+# App + globals
+# ---------------------------
 app = Flask(__name__, static_folder="static", template_folder="static")
-app.config.update(TEMPLATES_AUTO_RELOAD=True, SEND_FILE_MAX_AGE_DEFAULT=0)
 
-
-# Global cache guarded by a lock to keep things simple.
-_CACHE_LOCK = Lock()
-_CACHE = {
-    "root": None,            # Path | None
-    "excludes": [],          # list[str]
-    "df": None,              # pd.DataFrame | None
-    "corpus": [],            # list[str] full paths for matcher
+_ACTIVE = {
+    "df": None,           # pd.DataFrame | None
+    "config": None,       # Path | None
+    "matcher": None,      # for Rust Fuzzy Matcher object
 }
-_EXECUTOR = ThreadPoolExecutor(max_workers=2)
-# Per-key cache entries keyed by (root, excludes) hash
-_CACHE_DB: dict[str, dict] = {}   # key -> entry dict
-_ACTIVE_KEY: str | None = None    # last scanned/selected key
+_ACTIVE_LOCK = Lock()
 
 
-# --- Helpers ---
-def _cache_base_dir() -> Path:
-    """Return %LOCALAPPDATA%/file_database/spa as the on-disk cache root."""
-    base = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))).expanduser()
-    return (base / "file_database" / "spa")
-
-
-def _cache_paths_for(key: str) -> tuple[Path, Path]:
-    """Return (parquet_path, meta_json_path) for a given cache key."""
-    cachedir = _cache_base_dir()
-    cachedir.mkdir(parents=True, exist_ok=True)
-    return cachedir / f"{key}.parquet", cachedir / f"{key}.json"
-
-
-def _key_for(root: Path, excludes_list: list[str]) -> str:
-    """Stable key from resolved root + normalized excludes list."""
-    r = str(root.resolve())
-    ex = "\n".join(sorted(s.strip() for s in excludes_list if s.strip()))
-    h = blake2b(digest_size=16)
-    h.update(r.encode("utf-8"))
-    h.update(b"\n--\n")
-    h.update(ex.encode("utf-8"))
-    return h.hexdigest()
-
-
-def _save_disk_cache(key: str, df: pd.DataFrame, meta: dict) -> None:
-    """Persist df as parquet and meta.json next to it."""
-    pq, mj = _cache_paths_for(key)
-    # Requires pyarrow or fastparquet installed
-    df.to_parquet(pq, index=False)
-    mj.write_text(json.dumps(meta, indent=2), encoding="utf-8")
-
-
-def _load_disk_cache(key: str) -> tuple[pd.DataFrame, dict] | tuple[None, None]:
-    """Load df+meta from disk; returns (None, None) if missing."""
-    pq, mj = _cache_paths_for(key)
-    if not pq.exists() or not mj.exists():
-        return None, None
-    df = pd.read_parquet(pq)
-    meta = json.loads(mj.read_text(encoding="utf-8"))
-    return df, meta
-
-
-def _ensure_entry(key: str, root: Path, excludes_list: list[str], excludes_rx: list[re.Pattern]) -> dict:
-    """Get-or-create in-memory entry for this key."""
-    ent = _CACHE_DB.get(key)
-    if ent:
-        return ent
-    ent = {
-        "root": root.resolve(),
-        "excludes": list(excludes_list),
-        "excludes_rx": list(excludes_rx),
-        "active_df": None,          # pd.DataFrame | None
-        "active_corpus": [],        # list[str]
-        "gen": 0,                   # int
-        "built_at": None,           # float epoch seconds
-        "future": None,             # Future | None
-        "pending": None,            # tuple[df, corpus, built_at] | None
-        "lock": Lock(),
-    }
-    # Try disk cache immediately
-    df_disk, meta = _load_disk_cache(key)
-    if df_disk is not None:
-        ent["active_df"] = df_disk
-        ent["active_corpus"] = list(df_disk["path"]) if "path" in df_disk.columns else []
-        ent["gen"] = int(meta.get("gen", 0))
-        ent["built_at"] = float(meta.get("built_at", time()))
-    _CACHE_DB[key] = ent
-    return ent
-
-
-def _schedule_refresh(key: str) -> None:
-    """Spawn a one-shot build job if not already running."""
-    ent = _CACHE_DB[key]
-    with ent["lock"]:
-        fut: Future | None = ent.get("future")
-        if fut and not fut.done():
-            return
-        # Submit new job
-        fut = _EXECUTOR.submit(_build_job, ent["root"], ent["excludes_rx"])
-        ent["future"] = fut
-
-
-def _build_job(root: Path, excludes_rx: list[re.Pattern]) -> tuple[pd.DataFrame, list[str], float]:
-    """Background build: scan and return (df, corpus, built_at)."""
-    df, corpus = _scan(root, excludes_rx)
-    return df, corpus, time()
-
-
-def _maybe_adopt_refreshed(key: str) -> None:
-    """If a background refresh finished, swap it in and persist."""
-    ent = _CACHE_DB.get(key)
-    if not ent:
-        return
-    with ent["lock"]:
-        fut: Future | None = ent.get("future")
-        if not fut or not fut.done():
-            return
-        try:
-            df, corpus, built_at = fut.result()
-        finally:
-            ent["future"] = None
-        # Swap active snapshot
-        ent["active_df"] = df
-        ent["active_corpus"] = corpus
-        ent["gen"] = (ent.get("gen", 0) or 0) + 1
-        ent["built_at"] = built_at
-        # Persist to disk
-        meta = {
-            "root": str(ent["root"]),
-            "excludes": ent["excludes"],
-            "gen": ent["gen"],
-            "built_at": built_at,
-            "rows": int(len(df)),
-        }
-        _save_disk_cache(key, df, meta)
-        # Refresh global matcher with new corpus
-        _MATCHER.load(corpus)
-
-
-def _compile_excludes(patterns: Iterable[str]) -> List[re.Pattern]:
-    """Compile exclude regexes as case-insensitive; invalid patterns are ignored.
-
-    Each pattern is applied to each path component and to the extension (without leading dot).
-    """
-    out: List[re.Pattern] = []
-    for pat in patterns:
-        try:
-            out.append(re.compile(pat, re.IGNORECASE))
-        except re.error:
-            # Silently skip invalid regexes; could be logged if desired.
-            continue
-    return out
-
-
-def _should_exclude(p: Path, excludes: List[re.Pattern]) -> bool:
-    """Return True if any exclude regex matches any path part or the file extension.
-
-    - Matches are case-insensitive by construction.
-    - Only files are considered at the call site; directories are pruned by parts check.
-    """
-    parts = list(p.parts)
-    if p.suffix:
-        parts.append(p.suffix.lstrip("."))
-    for rx in excludes:
-        if any(rx.search(part) for part in parts):
-            return True
-    return False
-
-
+# ---------------------------
+# Utilities
+# ---------------------------
 def _to_iso(ts: float) -> str:
-    """Convert POSIX timestamp (s) to an ISO 8601 string in UTC (YYYY-MM-DDTHH:MM:SSZ)."""
+    """POSIX seconds -> ISO 8601 UTC string YYYY-MM-DDTHH:MM:SSZ."""
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _scan(root: Path, excludes: List[re.Pattern]) -> Tuple[pd.DataFrame, List[str]]:
-    """Walk *root* recursively with directory pruning and return (DataFrame, corpus)."""
-    recs: List[dict] = []
-    corpus: List[str] = []
-
-    root = root.resolve()
-
-    for dirpath, dirnames, filenames in os.walk(root):
-        dpath = Path(dirpath)
-
-        # prune subdirectories in-place
-        dirnames[:] = [
-            d for d in dirnames
-            if not _should_exclude(dpath / d, excludes)
-        ]
-
-        for name in filenames:
-            p = dpath / name
-            if _should_exclude(p, excludes):
-                continue
-            try:
-                st = p.stat()
-            except OSError:
-                continue
-
-            p = p.resolve()
-            abs_path = str(p)
-            try:
-                rel_path = p.relative_to(root).parent
-                # now relative, e.g. "subdir/file.txt"
-                subdir = str(rel_path)
-            except ValueError:
-                # links etc. will cause an error
-                # print(f'ValueError for {p.resolve()}')
-                subdir = str(p.parent)
-            recs.append({
-                "path": abs_path,
-                "name": p.name,
-                "subdir": subdir,
-                "ext": p.suffix.lstrip("."),
-                "size_bytes": int(st.st_size),
-                "created_iso": _to_iso(getattr(st, "st_ctime", st.st_mtime)),
-                "modified_iso": _to_iso(st.st_mtime),
-                "created_ns": int(getattr(st, "st_ctime_ns", int(st.st_mtime * 1e9))),
-                "modified_ns": int(st.st_mtime_ns),
-            })
-            corpus.append(abs_path)
-
-    df = pd.DataFrame.from_records(recs)
-    return df, corpus
-
-
-def _scan_old(root: Path, excludes: List[re.Pattern]) -> Tuple[pd.DataFrame, List[str]]:
-    """Walk the directory tree under *root* and return (DataFrame, corpus).
-
-    DataFrame columns:
-      - path (str, absolute)
-      - name (str)
-      - parent (str)
-      - ext (str, no dot)
-      - size_bytes (int)
-      - created_iso (str, UTC)
-      - modified_iso (str, UTC)
-      - created_ns (int)
-      - modified_ns (int)
-    """
-    recs = []
-    corpus = []
-    for p in root.rglob("*"):
-        # Skip directories early if a part is excluded
-        if p.is_dir():
-            if _should_exclude(p, excludes):
-                continue
-            else:
-                continue  # directories are not records
-        if not p.is_file():
-            continue
-        if _should_exclude(p, excludes):
-            continue
-        try:
-            st = p.stat()
-        except OSError:
-            continue
-        abs_path = str(p.resolve())
-        parent = str(p.parent)
-        ext = p.suffix.lstrip(".")
-        recs.append(
-            {
-                "path": abs_path,
-                "name": p.name,
-                "parent": parent,
-                "ext": ext,
-                "size_bytes": int(st.st_size),
-                "created_iso": _to_iso(getattr(st, "st_ctime", st.st_mtime)),
-                "modified_iso": _to_iso(st.st_mtime),
-                "created_ns": int(getattr(st, "st_ctime_ns", int(st.st_mtime * 1e9))),
-                "modified_ns": int(st.st_mtime_ns),
-            }
-        )
-        corpus.append(abs_path)
-    df = pd.DataFrame.from_records(recs)
-    return df, corpus
-
-
 def _parse_time_spec(spec: str, tz_name: str = "Europe/London") -> Optional[Tuple[int, int]]:
-    """Parse time filter like 'today', 'today-3', 'week', 'week-3', 'month-3', 'year-2'.
-    Returns (start_ns, end_ns) in UTC nanoseconds, or None if no/invalid spec.
-
-    Semantics:
-      - today         -> from start of local day to now
-      - today-N       -> last N days including today (day-boundaries)
-      - week          -> from Monday 00:00 local this week to now
-      - week-N        -> last N weeks including this week (Mon-boundaries)
-      - month         -> from first of this month 00:00 local to now
-      - month-N       -> last N calendar months including this month
-      - year          -> from Jan 1 this year 00:00 local to now
-      - year-N        -> last N calendar years including this year
+    """Parse 'today[-N]', 'week[-N]', 'month[-N]', 'year[-N]'.
+    Returns (start_ns, end_ns) in UTC nanoseconds, inclusive of current period and N-1 previous.
     """
     if not spec:
         return None
-
     s = spec.strip().casefold()
-    m = re.fullmatch(r"(today|week|month|year)(?:-(\d+))?", s)
+    # m = re.fullmatch(r"(today|week|month|year)(?:-(\d+))?", s)
+    m = re.fullmatch(r"(h|d|w|m|y)(?:-(\d+))?", s)
     if not m:
         return None
-
     unit, n_str = m.groups()
     n = int(n_str) if n_str else 1
     if n <= 0:
         return None
 
-    # local time
-    tz = ZoneInfo(tz_name) if ZoneInfo else datetime.now().astimezone().tzinfo
+    try:
+        from zoneinfo import ZoneInfo  # py3.9+
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = datetime.now().astimezone().tzinfo
+
     now_local = datetime.now(tz)
 
-    # helpers
-    def start_of_day(dt: datetime) -> datetime:
+    def sod(dt: datetime) -> datetime:
         return dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    def start_of_week(dt: datetime) -> datetime:
-        sod = start_of_day(dt)
-        return sod - timedelta(days=sod.weekday())  # Monday=0
+    def sow(dt: datetime) -> datetime:
+        d0 = sod(dt)
+        return d0 - timedelta(days=d0.weekday())  # Monday=0
 
-    def start_of_month(dt: datetime) -> datetime:
-        sod = start_of_day(dt)
-        return sod.replace(day=1)
+    def som(dt: datetime) -> datetime:
+        return sod(dt).replace(day=1)
 
-    def start_of_year(dt: datetime) -> datetime:
-        sod = start_of_day(dt)
-        return sod.replace(month=1, day=1)
+    def soy(dt: datetime) -> datetime:
+        return sod(dt).replace(month=1, day=1)
 
     def minus_months(dt: datetime, k: int) -> datetime:
-        # move to day 1 to avoid end-of-month pitfalls
-        y, m = dt.year, dt.month
-        m0 = m - k
-        y -= ( (k - 1 + m - 1) // 12 )
-        m0 = ((m - 1 - k) % 12) + 1
-        # recompute y correctly
-        years_delta = (m - 1 - k) // 12
-        y = dt.year + years_delta
-        # safer: compute total months and convert back
-        total = (dt.year * 12 + (dt.month - 1)) - k
-        y, m0 = divmod(total, 12)
-        return dt.replace(year=y, month=m0 + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        total = dt.year * 12 + (dt.month - 1) - k
+        y, m = divmod(total, 12)
+        return dt.replace(year=y, month=m + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    # choose start
-    if unit == "today":
-        base = start_of_day(now_local)
-        start_local = base - timedelta(days=(n - 1))
-    elif unit == "week":
-        base = start_of_week(now_local)
-        start_local = base - timedelta(weeks=(n - 1))
-    elif unit == "month":
-        base = start_of_month(now_local)
+    if unit == 'h':
+        # hours
+        base = sod(now_local)
+        start_local = base - timedelta(hours=n - 1)
+    elif unit == 'd':
+        # day
+        base = sod(now_local)
+        start_local = base - timedelta(days=n - 1)
+    elif unit == "w":
+        # week
+        base = sow(now_local)
+        start_local = base - timedelta(weeks=n - 1)
+    elif unit == "m":
+        # month
+        base = som(now_local)
         start_local = minus_months(base, n - 1)
-    else:  # "year"
-        base = start_of_year(now_local)
+    else:
+        # year
+        base = soy(now_local)
         start_local = base.replace(year=base.year - (n - 1))
 
-    # convert to UTC ns
     start_utc = start_local.astimezone(timezone.utc)
     end_utc = now_local.astimezone(timezone.utc)
-    start_ns = int(start_utc.timestamp() * 1e9)
-    end_ns = int(end_utc.timestamp() * 1e9)
-    return start_ns, end_ns
+    return int(start_utc.timestamp() * 1e9), int(end_utc.timestamp() * 1e9)
 
 
-# --- Placeholder fuzzy matcher ---
-class SimpleFuzzy:
-    """Very small, fast-enough placeholder to be replaced by your Rust matcher.
+def _normalize_loaded_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a copy normalized for the SPA."""
+    out = df.copy()
 
-    Strategy: casefolded substring hit -> score = |match| / |path|; otherwise 0.
+    # path
+    if "path" not in out.columns:
+        raise ValueError("Loaded DB must include a 'path' column (absolute path).")
+
+    # name
+    if "name" not in out.columns:
+        out["name"] = out["path"].map(lambda s: Path(s).name)
+
+    # parent (directory path as string)
+    out["parent"] = out["path"].map(lambda s: str(Path(s).parent))
+
+    # ext (no dot): prefer 'suffix' if present
+    if "suffix" in out.columns:
+        out["ext"] = out["suffix"].astype(str).str.lstrip(".")
+    else:
+        out["ext"] = out["name"].map(lambda s: Path(s).suffix.lstrip("."))
+
+    # size -> size_bytes
+    if "size_bytes" not in out.columns:
+        if "size" in out.columns:
+            out["size_bytes"] = pd.to_numeric(out["size"], errors="coerce").fillna(0).astype("int64")
+        else:
+            out["size_bytes"] = 0
+
+    # for fuzzy matching
+    out["fuzzy"] = out.dir + ' ' + out['name'].str.replace('_', ' ')
+
+    # modified time -> modified_ns + modified_iso (UTC)
+    # accept 'mod' or 'modified' column
+    ts_col = "mod" if "mod" in out.columns else ("modified" if "modified" in out.columns else None)
+    if ts_col is None:
+        raise ValueError("Loaded DB must include a 'mod' (or 'modified') timestamp column.")
+
+    # parse timestamps (mixed tz-aware / naive supported)
+    mod = pd.to_datetime(out[ts_col], errors="coerce", utc=False)
+    # If Series has no tz, localize to local zone; else keep tz-aware
+    if getattr(mod.dt, "tz", None) is None:
+        local_tz = datetime.now().astimezone().tzinfo
+        mod = mod.dt.tz_localize(local_tz, nonexistent="shift_forward", ambiguous="NaT")
+    mod_utc = mod.dt.tz_convert("UTC")
+    out["modified_ns"] = mod_utc.view("int64")  # epoch ns
+    out["modified_iso"] = mod_utc.dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # Select + order a compact set used by the UI
+    cols = ["name", "parent", "ext", "size_bytes", "modified_iso", "modified_ns",
+            "path", "fuzzy"]
+    return out[cols]
+
+
+def load_project_db(config_path: Path) -> pd.DataFrame:
+    """Given a *.fdb-config path, load and return the project's DataFrame.
+
+    Expected columns (minimum): name, path, mod, size, suffix
+    Return a DataFrame; _normalize_loaded_df will convert to the SPA schema.
+
+    Replace this body with your real loader.
     """
-
-    def __init__(self) -> None:
-        self._items: List[str] = []
-        self._folded: List[str] = []
-
-    def load(self, items: List[str]) -> None:
-        self._items = items
-        self._folded = [s.casefold() for s in items]
-
-    def search(self, query: str, limit: int = 200) -> List[Tuple[int, float]]:
-        q = query.strip().casefold()
-        if not q:
-            # Return first N by recency (as-is ordering); caller can sort by modified_ns from df.
-            return [(i, 0.0) for i in range(min(limit, len(self._items)))]
-        hits: List[Tuple[int, float]] = []
-        for i, s in enumerate(self._folded):
-            pos = s.find(q)
-            if pos != -1:
-                score = len(q) / max(1, len(s))
-                hits.append((i, score))
-        hits.sort(key=lambda t: t[1], reverse=True)
-        return hits[:limit]
+    pm = ProjectManager(config_path)
+    return pm.database
 
 
-_MATCHER = SimpleFuzzy()
+# ---------------------------
+# Routes
+# ---------------------------
+@app.get("/api/projects")
+def projects():
+    """List available *.fdb-config files in BASE_DIR (non-recursive)."""
+    base = BASE_DIR.resolve()
+    if not base.exists() or not base.is_dir():
+        return make_response(jsonify({"error": "BASE_DIR not found"}), 500)
+    items = []
+    for p in sorted(base.glob("*.fdb-config")):
+        items.append({"path": str(p), "title": p.stem})
+    return jsonify({"projects": items})
 
 
-# --- Routes ---
-@app.post("/api/pick")
-def pick_folder():
-    """Open a native folder picker (Windows) and return the chosen path.
-
-    Returns {"root": str} or {"root": null} if canceled.
-    """
-    # Local import to avoid Tk on non-pick routes.
-    import tkinter as tk
-    from tkinter import filedialog
-
-    root = tk.Tk()
-    root.withdraw()
-    root.wm_attributes("-topmost", 1)
-    selected = filedialog.askdirectory(title="Select root directory")
-    root.destroy()
-    return jsonify({"root": selected or None})
-
-
-@app.post("/api/scan")
-def scan():
-    """Scan/refresh cache for {root, excludes}; manual refresh on click."""
+@app.post("/api/load")
+def load():
+    """Load selected project DB and prime matcher."""
     data = request.get_json(force=True, silent=True) or {}
-    root_s = data.get("root")
-    excludes_list = data.get("excludes", [])
-    if not root_s:
-        return make_response(jsonify({"error": "Missing 'root'"}), 400)
+    cfg = data.get("config")
+    if not cfg:
+        return make_response(jsonify({"error": "Missing 'config'"}), 400)
 
-    root = Path(root_s).resolve()
-    if not root.exists() or not root.is_dir():
-        return make_response(jsonify({"error": "Root is not a directory"}), 400)
+    cfg_path = Path(cfg).resolve()
+    try:
+        cfg_path.relative_to(BASE_DIR.resolve())
+    except Exception:
+        return make_response(jsonify({"error": "Config must be under BASE_DIR"}), 400)
+    if not cfg_path.exists() or not cfg_path.is_file():
+        return make_response(jsonify({"error": "Config path not found"}), 400)
 
-    rx = _compile_excludes(excludes_list)
-    key = _key_for(root, excludes_list)
-    ent = _ensure_entry(key, root, excludes_list, rx)
+    df_raw = load_project_db(cfg_path)  # <-- you implement
+    df = _normalize_loaded_df(df_raw)
 
-    # Mark this key active for subsequent /api/search and /api/open
-    global _ACTIVE_KEY
-    _ACTIVE_KEY = key
+    with _ACTIVE_LOCK:
+        _ACTIVE["df"] = df
+        _ACTIVE["config"] = cfg_path
+        _ACTIVE["matcher"] = FuzzyMatcherMulti(df['fuzzy'].to_list())
 
-    # If no active snapshot in memory, try disk (already done in _ensure_entry).
-    # If still cold, kick a build and report 'building'.
-    if ent["active_df"] is None:
-        _schedule_refresh(key)
-        return jsonify({
-            "status": "building",
-            "root": str(root),
-            "count": 0,
-            "gen": 0,
-        })
-
-    # Warm start: schedule a refresh build now (manual trigger) and return current stats.
-    _schedule_refresh(key)
-    df: pd.DataFrame = ent["active_df"]
-    _MATCHER.load(ent["active_corpus"])  # ensure matcher reflects active corpus
     return jsonify({
-        "status": "warm",
-        "root": str(root),
-        "count": int(len(df)),
-        "gen": int(ent.get("gen", 0)),
-        "built_at": ent.get("built_at"),
+        "ok": True,
+        "rows": int(len(df)),
+        "config": str(cfg_path),
         "columns": list(df.columns),
     })
-
-# @app.post("/api/scan")
-# def scan():
-#     """Scan the directory; body must include JSON with keys: root, excludes (list[str])."""
-#     data = request.get_json(force=True, silent=True) or {}
-#     root_s = data.get("root")
-#     excludes_list = data.get("excludes", [])
-
-#     if not root_s:
-#         return make_response(jsonify({"error": "Missing 'root'"}), 400)
-
-#     root = Path(root_s).resolve()
-#     if not root.exists() or not root.is_dir():
-#         return make_response(jsonify({"error": "Root is not a directory"}), 400)
-
-#     rx = _compile_excludes(excludes_list)
-#     df, corpus = _scan(root, rx)
-
-#     with _CACHE_LOCK:
-#         _CACHE["root"] = root
-#         _CACHE["excludes"] = list(excludes_list)
-#         _CACHE["df"] = df
-#         _CACHE["corpus"] = corpus
-#         _MATCHER.load(corpus)
-
-#     return jsonify({
-#         "count": int(len(df)),
-#         "root": str(root),
-#         "columns": list(df.columns),
-#     })
 
 
 @app.get("/api/search")
 def search():
-    """Search cached corpus with query q and return top rows as JSON.
+    """Search current DB with optional time filter."""
+    qt = request.args.get("q", default="", type=str)
+    n = request.args.get("n", default=20, type=int)
+    logger.info('query received %s', qt)
+    qts = qt.split('@')
+    q = t = ''
+    if len(qts) == 1:
+        q = qts[0].strip()
+    elif len(qts) == 2:
+        q, t = qts
+        q = q.strip()
+        t = t.strip()
+    logger.info('parsed filtering q=%s, time=%s, n=%s', q, t, n)
 
-    Query params:
-      q: query string
-      n: optional int limit (default 200)
-      t: time filter
-    """
-    q = request.args.get("q", default="", type=str)
-    n = request.args.get("n", default=200, type=int)
-    t = request.args.get("t", default="", type=str)
-
-    # Adopt refreshed snapshot if available
-    if _ACTIVE_KEY:
-        _maybe_adopt_refreshed(_ACTIVE_KEY)
-
-    with _CACHE_LOCK:
-        # df: Optional[pd.DataFrame] = _CACHE.get("df")
-        # if df is None or df.empty:
-        #     return jsonify({"rows": [], "count": 0})
-
-        # Select active entry + df/corpus
-        if not _ACTIVE_KEY or _ACTIVE_KEY not in _CACHE_DB:
-            return jsonify({"rows": [], "count": 0})
-        ent = _CACHE_DB[_ACTIVE_KEY]
-        df: Optional[pd.DataFrame] = ent.get("active_df")
-        corpus: list[str] = ent.get("active_corpus") or []
+    with _ACTIVE_LOCK:
+        df: Optional[pd.DataFrame] = _ACTIVE["df"]
         if df is None or df.empty:
             return jsonify({"rows": [], "count": 0})
 
-        # apply time filter if provided
+        original_records = len(df)
+
+        # time filter
         filt_df = df
         bounds = _parse_time_spec(t)
         if bounds:
             start_ns, end_ns = bounds
             mask = (df["modified_ns"] >= start_ns) & (df["modified_ns"] < end_ns)
             filt_df = df.loc[mask]
+            if filt_df.empty:
+                return jsonify({"rows": [], "count": 0})
+            logger.info('time bounds reduces df from %s to %s records',
+                original_records, len(filt_df))
 
-        if filt_df.empty:
-            return jsonify({"rows": [], "count": 0})
-
+        # no query -> recency in window
         if not q.strip():
-            # default: most recent first within the time window
             rows = (
                 filt_df.sort_values("modified_ns", ascending=False)
-                .head(n)[["name", "subdir", "ext", "size_bytes", "modified_iso", "path"]]
+                .head(n)[["name", "parent", "ext", "size_bytes", "modified_iso", "path"]]
                 .to_dict(orient="records")
             )
             return jsonify({"rows": rows, "count": len(rows)})
 
         # fuzzy + time: intersect by path
-        limit = max(n * 5, n)  # widen pool so time filter doesn't starve results
-        idx_scores = _MATCHER.search(q, limit=limit)
+        limit = max(n * 5, n)
+        matcher = _ACTIVE['matcher']
+        idx_scores, scores = matcher.query(q, limit)
         if not idx_scores:
             return jsonify({"rows": [], "count": 0})
 
-        allowed = set(filt_df["path"])
-        corpus: List[str] = _CACHE.get("corpus", [])
-        chosen_paths: List[str] = []
-        for i, _score in idx_scores:
-            if i < 0 or i >= len(corpus):
-                continue
-            pth = corpus[i]
-            if pth in allowed:
-                chosen_paths.append(pth)
-                if len(chosen_paths) >= n:
-                    break
-
-        if not chosen_paths:
+        if not idx_scores:
             return jsonify({"rows": [], "count": 0})
-
-        idxed = filt_df.set_index("path", drop=False)
-        rows_df = idxed.loc[chosen_paths]
-        # rows_df = idxed.loc[chosen_paths]  # keep matcher order
-        rows_df = idxed.loc[chosen_paths].sort_values("modified_ns", ascending=False)  # recency-first
-
-        out = rows_df[["name", "subdir", "ext", "size_bytes", "modified_iso", "path"]].to_dict(orient="records")
+        if bounds:
+            # only pick records in filt_df
+            idx_scores = [i for i in idx_scores if i in filt_df.index]
+        rows_df = filt_df.loc[idx_scores]
+        logger.info('fuzzy query reduces from %s to %s records', len(filt_df), len(rows_df))
+        if bounds:
+            # prefer recency within matched set
+            rows_df = rows_df.sort_values("modified_ns", ascending=False)
+            logger.info('time and fuzzy - sorting on time')
+        out = rows_df[["name", "parent", "ext", "size_bytes", "modified_iso", "path"]].to_dict(orient="records")
         return jsonify({"rows": out, "count": len(out)})
 
-# OPTIONAL: make /api/open tolerant to relative paths (drop in)
+
 @app.get("/api/open")
 def open_file():
-    """Open a file via Windows default application. Security: restrict to active root."""
+    """Open a file via Windows default app. Only allows paths present in the loaded DB."""
     path_s = request.args.get("path")
     if not path_s:
         return make_response(jsonify({"error": "Missing 'path'"}), 400)
-    if not _ACTIVE_KEY or _ACTIVE_KEY not in _CACHE_DB:
-        return make_response(jsonify({"error": "No active root"}), 400)
 
-    ent = _CACHE_DB[_ACTIVE_KEY]
-    root: Path = ent["root"]
+    with _ACTIVE_LOCK:
+        if not _ACTIVE["allowed"]:
+            return make_response(jsonify({"error": "No project loaded"}), 400)
+        if path_s not in _ACTIVE["allowed"]:
+            return make_response(jsonify({"error": "Path not in current DB"}), 400)
 
-    p_in = Path(path_s)
-    p = (root / p_in).resolve() if not p_in.is_absolute() else p_in.resolve()
-    try:
-        p.relative_to(root)
-    except Exception:
-        return make_response(jsonify({"error": "Path not under root"}), 400)
+    p = Path(path_s).resolve()
     if not p.exists() or not p.is_file():
         return make_response(jsonify({"error": "Not a file"}), 400)
     os.startfile(str(p))
     return jsonify({"ok": True})
 
 
-# @app.get("/api/open")
-# def open_file():
-#     """Open a file via Windows default application.
-
-#     Security: only allow paths under the cached root.
-#     """
-#     path_s = request.args.get("path")
-#     if not path_s:
-#         return make_response(jsonify({"error": "Missing 'path'"}), 400)
-#     with _CACHE_LOCK:
-#         root: Optional[Path] = _CACHE.get("root")
-#         if root is None:
-#             return make_response(jsonify({"error": "No root set"}), 400)
-#         p = Path(path_s).resolve()
-#         try:
-#             p.relative_to(root)
-#         except Exception:
-#             return make_response(jsonify({"error": "Path not under root"}), 400)
-#     if not p.exists() or not p.is_file():
-#         return make_response(jsonify({"error": "Not a file"}), 400)
-#     os.startfile(str(p))
-#     return jsonify({"ok": True})
-
-
 @app.get("/")
 def index():
-    """Serve the SPA index.html."""
+    """Serve the SPA."""
     return send_from_directory(app.static_folder, "index.html")
 
 
-# @app.after_request
-# def _no_cache(resp):
-#     """Disable client caching in dev so static edits show on refresh."""
-#     resp.headers["Cache-Control"] = "no-store"
-#     return resp
-
-
 if __name__ == "__main__":
-    # Windows-only dev run.
+    # when run like this we are responsible for setting up logging
+    import logging.config
+
+    config_path = Path('\\s\\telos\\python\\gs_project\\gstarter\\logconfig.yaml')
+    with config_path.open("r") as f:
+        config = yaml.safe_load(f)
+        logging.config.dictConfig(config)
+
+    logger = logging.getLogger(__name__)
+    logger.info('main logging setup...')
+
     app.run(host="127.0.0.1", port=5008, debug=True)
-
-

@@ -1,6 +1,7 @@
 """Manage config file and index database creation and updating."""
 
 from datetime import datetime
+import logging
 from pathlib import Path
 import re
 import socket
@@ -11,9 +12,11 @@ import yaml
 import pandas as pd
 
 from . import BASE_DIR
-from . querier import query_ex, query_help as query_help_work
 from . disk_info import DriveInfo
 from . hasher import hash_many
+
+
+logger = logging.getLogger(__name__)
 
 
 class ProjectManager():
@@ -29,26 +32,24 @@ class ProjectManager():
         self.config_path = Path(config_path)
         if self.config_path.suffix != '.fdb-config':
             self.config_path = self.config_path.with_suffix('.fdb-config')
-        # print(self.config_path)
+
         if not self.config_path.exists():
             self.config_path = BASE_DIR / self.config_path.name
-        # print(self.config_path)
+        logger.info('Opening %s', self.config_path)
+
         with self.config_path.open() as f:
             self._config = yaml.safe_load(f)
             self.hostname = socket.gethostname()
             if self.hostname.lower() != self._config['hostname'].lower():
-                print(
-                    f"WARNING: Host name {self.hostname} of machine does not match config file {cfg['hostname']}."
-                )
+                logger.warning(
+                    "WARNING: Host name %s of machine does not match config file %s.",
+                     self.hostname, cfg['hostname'])
         self._database = pd.DataFrame([])
         self._config_df = None
         self.last_excluded_list = None
         self._re_excluded_dirs = None
         self._re_excluded_files = None
-        self._last_query = None
-        self._last_unrestricted = 0
-        self._last_query_title = ''
-        self._last_query_expr = ''
+        logger.info("object %s created.", self)
 
     def __getattr__(self, name):
         """Provide access to config yaml dictionary."""
@@ -81,18 +82,6 @@ class ProjectManager():
         """Set new attributes of config yaml dictionary."""
         for k, v in kwargs.items():
             self._config[k] = v
-
-    def query(self, expr):
-        """Run ``expr`` through the querier."""
-        self._last_query_expr = expr
-        self._last_query, self._last_unrestricted = query_ex(self.database, expr)
-        self._last_query_title = f'<strong>QUERY</strong>: <code>{expr}</code>, showing {len(self._last_query)} of {self._last_unrestricted} results.'
-        return self._last_query
-
-    @staticmethod
-    def query_help():
-        """Print help for query syntax."""
-        return query_help_work()
 
     def hardlinks(self, keep=False) -> pd.DataFrame:
         """Return rows that share the same inode (i.e., hard links)."""
@@ -253,11 +242,6 @@ class ProjectManager():
 
             # Convert to date time in local timezone
             tz = self.timezone
-            # low res second version
-            # df["mod"] = pd.to_datetime(df["mod"], unit="s").dt.tz_localize("UTC").dt.tz_convert(tz)
-            # more technically correct but makes querying harder
-            # df["mod"] = pd.to_datetime(df["mod"], unit="ns", utc=True).dt.tz_convert(config["timezone"])
-            # so go with
             df_new["create"] = pd.to_datetime(df_new["create"], unit="ns").dt.tz_localize("UTC").dt.tz_convert(tz)
             df_new["mod"] = pd.to_datetime(df_new["mod"], unit="ns").dt.tz_localize("UTC").dt.tz_convert(tz)
             df_new["access"] = pd.to_datetime(df_new["access"], unit="ns").dt.tz_localize("UTC").dt.tz_convert(tz)
@@ -272,13 +256,10 @@ class ProjectManager():
                 df = df_new
                 lprint(f'df - created new, {len(df)} records')
 
-        #
-
         # replace database
         self._database = df
 
         # Update config files
-        # print(df.head())
         max_ns = int(df["mod"].max().value)  # convert to nanoseconds
 
         # index process timing
@@ -332,7 +313,7 @@ class ProjectManager():
                         self.last_excluded_list.append(['dir',  entry.name])
                         continue  # skip this dir entirely
                     yield from recurse(entry)
-                elif entry.is_file() or entry.is_symlink(False):
+                elif entry.is_file() or entry.is_symlink():
                     if any(r.search(entry.name) for r in self._re_excluded_files):
                         self.last_excluded_list.append(['file', entry.name])
                         continue

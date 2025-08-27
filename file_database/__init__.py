@@ -37,4 +37,5 @@ DEFAULT_CONFIG_FILE = BASE_DIR / "default.fdb-config"
 # avoid circular import errors
 from . __version__ import __version__
 from . manager import ProjectManager  # noqa
+from . fast_manager import FastProjectManager  # noqa
 
